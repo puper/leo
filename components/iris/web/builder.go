@@ -10,7 +10,7 @@ import (
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Web) error) engine.Builder {
-	return func(e *engine.Engine) (any, error) {
+	return func() (any, error) {
 		s := &http.Server{
 			ReadTimeout:  cfg.ReadTimeout,
 			WriteTimeout: cfg.WriteTimeout,

@@ -8,7 +8,7 @@ import (
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.Builder {
-	return func(e *engine.Engine) (any, error) {
+	return func() (any, error) {
 		me, err := clientv3.New(clientv3.Config{
 			Endpoints:   cfg.Endpoints,
 			DialTimeout: cfg.DialTimeout,

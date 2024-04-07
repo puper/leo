@@ -14,7 +14,7 @@ import (
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.Builder {
-	return func(e *engine.Engine) (any, error) {
+	return func() (any, error) {
 		httpClient := &http.Client{
 			Timeout: time.Second * time.Duration(60),
 			Transport: &http.Transport{

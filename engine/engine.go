@@ -12,7 +12,7 @@ import (
 
 type Config = viper.Viper
 
-type Builder func(engine *Engine) (any, error)
+type Builder func() (any, error)
 
 type Closer interface {
 	Close() error
@@ -59,7 +59,7 @@ func (me *Engine) Build() error {
 		if builder, ok := me.builders[name]; ok {
 			var err error
 			fmt.Printf("build component `%v` start\n", name)
-			if me.instances[name], err = builder(me); err != nil {
+			if me.instances[name], err = builder(); err != nil {
 				return err
 			}
 			fmt.Printf("build component `%v` end\n", name)

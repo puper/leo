@@ -11,7 +11,7 @@ import (
 )
 
 func Builder(cfg *config.Config, configurers ...func(*nats.Conn) error) engine.Builder {
-	return func(e *engine.Engine) (any, error) {
+	return func() (any, error) {
 		c, err := nats.Connect(
 			cfg.Url,
 			nats.UserInfo(cfg.Username, cfg.Password),

@@ -8,7 +8,7 @@ import (
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.Builder {
-	return func(e *engine.Engine) (interface{}, error) {
+	return func() (interface{}, error) {
 		me := New(cfg)
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
