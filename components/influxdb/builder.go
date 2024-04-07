@@ -33,15 +33,17 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		c := influxdb2.NewClientWithOptions(cfg.ServerUrl, cfg.Token,
 			influxdb2.DefaultOptions().
 				SetUseGZip(cfg.UseGzip).
-				SetHTTPClient(httpClient),
+				SetHTTPClient(httpClient).
+				SetApplicationName(cfg.AppName),
 		)
 		_, err := c.BucketsAPI().FindBucketByName(context.TODO(), cfg.Bucket)
 		if err != nil {
 			return nil, errors.WithMessage(err, "find bucket")
 		}
 		me := &Component{
-			Client:   c,
-			WriteApi: c.WriteAPI(cfg.Org, cfg.Bucket),
+			Client:     c,
+			WriteApi:   c.WriteAPI(cfg.Org, cfg.Bucket),
+			ViQueryApi: NewV1QueryApi(httpClient, c.ServerURL(), cfg.Token, cfg.AppName),
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {

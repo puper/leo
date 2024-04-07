@@ -14,4 +14,6 @@ type Config struct {
 	MaxIdleConnsPerHost int           `json:"maxIdleConnsPerHost,omitempty"`
 	IdleConnTimeout     time.Duration `json:"idleConnTimeout,omitempty"`
 	UseGzip             bool          `json:"useGzip,omitempty"`
+
+	AppName string `json:"appName,omitempty"`
 }
