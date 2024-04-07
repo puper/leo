@@ -50,6 +50,6 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}
-		return c, nil
+		return me, nil
 	}
 }
