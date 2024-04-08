@@ -36,8 +36,11 @@ func New(cfg *config.Config) *Component {
 	me := &Component{
 		config: cfg,
 		wg:     new(sync.WaitGroup),
-		ch:     make(chan *Event, 10),
-		mainCh: make(chan *Event, 10),
+		ch:     make(chan *Event, 1),
+		mainCh: make(chan *Event, 1),
+		serverIds: &ServerIds{
+			Data: make(map[int]bool),
+		},
 	}
 	me.ctx, me.cancel = context.WithCancel(context.Background())
 	return me

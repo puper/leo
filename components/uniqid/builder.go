@@ -18,6 +18,9 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		if me.etcdCli == nil {
 			return nil, errors.WithMessage(errors.New("etcd client is nil"), "uniqid.configurer")
 		}
+		if err := me.Start(); err != nil {
+			return nil, errors.WithMessage(err, "uniqid.Start")
+		}
 		return me, nil
 	}
 }

@@ -11,9 +11,6 @@ import (
 
 func Builder(cfg *config.Config, configurers ...func(*Db) error) engine.Builder {
 	return func() (any, error) {
-		for k, v := range cfg.Servers {
-			cfg.Servers[k] = v
-		}
 		reply, err := New(cfg)
 		if err != nil {
 			return nil, errors.WithMessage(err, "New")
