@@ -43,7 +43,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		me := &Component{
 			Client:     c,
 			WriteApi:   c.WriteAPI(cfg.Org, cfg.Bucket),
-			ViQueryApi: NewV1QueryApi(httpClient, c.ServerURL(), cfg.Token, cfg.AppName),
+			V1QueryApi: NewV1QueryApi(httpClient, c.ServerURL(), cfg.Token, cfg.AppName),
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {

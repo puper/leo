@@ -8,7 +8,7 @@ import (
 type Component struct {
 	Client     influxdb2.Client
 	WriteApi   api.WriteAPI
-	ViQueryApi *V1QueryApi
+	V1QueryApi *V1QueryApi
 }
 
 func (me *Component) Close() error {
