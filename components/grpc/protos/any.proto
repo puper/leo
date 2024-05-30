@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "github.com/puper/leo/components/grpc/protos";
+
+package protos;
+
+service AnyService {
+  rpc Call (AnyRequest) returns (AnyReply) {}
+}
+
+message AnyRequest {
+  string method = 1;
+  bytes body = 2;
+}
+
+message AnyReply {
+  bytes result = 1;
+}
