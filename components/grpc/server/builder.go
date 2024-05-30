@@ -12,8 +12,8 @@ import (
 func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.Builder {
 	return func() (any, error) {
 		me := &Component{
+			Server: grpc.NewServer(),
 			config: cfg,
-			server: grpc.NewServer(),
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
@@ -26,7 +26,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		}
 		go func() {
 			defer lis.Close()
-			if err := me.server.Serve(lis); err != nil {
+			if err := me.Server.Serve(lis); err != nil {
 				if !errors.Is(err, grpc.ErrServerStopped) {
 					// log error?
 				}

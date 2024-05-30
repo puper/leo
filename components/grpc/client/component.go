@@ -6,13 +6,13 @@ import (
 )
 
 type Component struct {
+	*grpc.ClientConn
 	config *config.Config
-	client *grpc.ClientConn
 }
 
 func (me *Component) Close() error {
-	if me.client != nil {
-		return me.client.Close()
+	if me.ClientConn != nil {
+		return me.ClientConn.Close()
 	}
 	return nil
 }

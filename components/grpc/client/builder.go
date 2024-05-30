@@ -20,7 +20,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		if err != nil {
 			return nil, errors.WithMessage(err, "")
 		}
-		me.client = cli
+		me.ClientConn = cli
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
 				return nil, errors.WithMessage(err, "configurer")

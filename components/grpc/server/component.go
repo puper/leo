@@ -6,13 +6,13 @@ import (
 )
 
 type Component struct {
+	*grpc.Server
 	config *config.Config
-	server *grpc.Server
 }
 
 func (me *Component) Close() error {
-	if me.server != nil {
-		me.server.GracefulStop()
+	if me.Server != nil {
+		me.Server.GracefulStop()
 	}
 	return nil
 }
