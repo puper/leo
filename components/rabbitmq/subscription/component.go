@@ -54,12 +54,12 @@ func (me *Subscription) Start() error {
 		me.subscriptionCallback = func(ch *amqp.Channel, cfg *config.Config, inited bool) (<-chan amqp.Delivery, error) {
 			return ch.Consume(
 				cfg.QueueName,
-				"",    // Consumer
-				false, // Auto-Ack
-				false, // Exclusive
-				false, // No-local
-				false, // No-Wait
-				nil,   // Args
+				"",                // Consumer
+				me.config.AutoAck, // Auto-Ack
+				false,             // Exclusive
+				false,             // No-local
+				false,             // No-Wait
+				nil,               // Args
 			)
 		}
 	}
@@ -163,6 +163,7 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 		case d := <-deliveries:
 			msg := &Message{
 				Delivery: d,
+				config:   me.config,
 				cache:    me.cache,
 			}
 			if !msg.IsDuplicated() {
@@ -176,15 +177,22 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 
 type Message struct {
 	amqp.Delivery
-	cache gcache.Cache
+	config *config.Config
+	cache  gcache.Cache
 }
 
 func (me *Message) IsDuplicated() bool {
+	if me.config.AutoAck {
+		return false
+	}
 	_, err := me.cache.Get(me.DeliveryTag)
 	return err == nil
 }
 
 func (me *Message) Ack(multiple bool) error {
+	if me.config.AutoAck {
+		return nil
+	}
 	if err := me.Delivery.Ack(multiple); err != nil {
 		me.cache.SetWithExpire(me.DeliveryTag, true, time.Hour)
 		return err
