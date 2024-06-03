@@ -3,7 +3,6 @@ package subscription
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -20,7 +19,7 @@ func New(cfg *config.Config) *Subscription {
 		cancel: cancel,
 		wg:     &sync.WaitGroup{},
 		inited: false,
-		initCh: make(chan error),
+		initCh: make(chan error, 1),
 		msgCh:  make(chan *Message, 1),
 
 		cache: gcache.New(0).Build(),
@@ -96,9 +95,8 @@ func (me *Subscription) mainloop() {
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
-		err := me.run(signalCh, doneCh)
+		me.run(signalCh, doneCh)
 		// log error?
-		log.Println(err)
 		select {
 		case <-me.ctx.Done():
 			close(signalCh)

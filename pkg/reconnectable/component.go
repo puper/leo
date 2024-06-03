@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type RunFunc func() (signalCh chan struct{}, doneCh chan struct{}, err error)
+type RunFunc func(signalCh chan struct{}, doneCh chan struct{}) error
 
 func New(runFunc RunFunc, closeTimeout time.Duration, reconnectDelay time.Duration) *Component {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -17,6 +17,8 @@ func New(runFunc RunFunc, closeTimeout time.Duration, reconnectDelay time.Durati
 		runFunc:        runFunc,
 		closeTimeout:   closeTimeout,
 		reconnectDelay: reconnectDelay,
+
+		initCh: make(chan error, 1),
 	}
 }
 
@@ -27,6 +29,9 @@ type Component struct {
 	runFunc        RunFunc
 	closeTimeout   time.Duration
 	reconnectDelay time.Duration
+
+	inited bool
+	initCh chan error
 }
 
 func (me *Component) Close() error {
@@ -36,29 +41,19 @@ func (me *Component) Close() error {
 }
 
 func (me *Component) Start() error {
-	initCh := make(chan error)
 	me.wg.Add(1)
-	go me.mainloop(initCh)
-	return <-initCh
+	go me.mainloop()
+	return <-me.initCh
 }
 
-func (me *Component) mainloop(initCh chan error) {
+func (me *Component) mainloop() {
 	defer me.wg.Done()
 	defer me.cancel()
-	inited := false
 	for {
-		signalCh, doneCh, err := me.runFunc()
-		if err != nil {
-			if !inited {
-				initCh <- err
-				return
-			}
-		} else {
-			if !inited {
-				initCh <- nil
-				inited = true
-			}
-		}
+		signalCh := make(chan struct{}, 1)
+		doneCh := make(chan struct{}, 1)
+		me.runFunc(signalCh, doneCh)
+		// log error?
 		select {
 		case <-me.ctx.Done():
 			close(signalCh)
