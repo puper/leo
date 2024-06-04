@@ -52,7 +52,7 @@ func (me *Component) mainloop() {
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
-		me.runFunc(signalCh, doneCh)
+		go me.runFunc(signalCh, doneCh)
 		// log error?
 		select {
 		case <-me.ctx.Done():

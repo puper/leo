@@ -95,7 +95,7 @@ func (me *Subscription) mainloop() {
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
-		me.run(signalCh, doneCh)
+		go me.run(signalCh, doneCh)
 		// log error?
 		select {
 		case <-me.ctx.Done():
