@@ -160,16 +160,18 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 			return err
 		case c := <-chCancelCh:
 			return fmt.Errorf("cancel: %s", c)
-		case d := <-deliveries:
-			msg := &Message{
-				Delivery: d,
-				config:   me.config,
-				cache:    me.cache,
-			}
-			if !msg.IsDuplicated() {
-				me.msgCh <- msg
-			} else {
-				msg.Ack(false)
+		case d, ok := <-deliveries:
+			if ok {
+				msg := &Message{
+					Delivery: d,
+					config:   me.config,
+					cache:    me.cache,
+				}
+				if !msg.IsDuplicated() {
+					me.msgCh <- msg
+				} else {
+					msg.Ack(false)
+				}
 			}
 		}
 	}
