@@ -40,8 +40,9 @@ func (me *MutexManager) Lock(key string) {
 		me.mutexes[key] = &Mutex{}
 	}
 	me.mutexes[key].locks++
+	m := me.mutexes[key]
 	me.mutex.Unlock()
-	me.mutexes[key].Lock()
+	m.Lock()
 
 }
 
