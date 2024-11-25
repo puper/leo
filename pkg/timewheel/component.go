@@ -123,7 +123,8 @@ LOOP:
 		case now := <-tk.C:
 			for jobTime := range expiredJobTimes {
 				for _, job := range me.jobsByTime[jobTime] {
-					delete(me.jobsById, job.Id)
+					mapKey := job.Key + ":" + job.Id
+					delete(me.jobsById, mapKey)
 					me.dispatchJobs <- job
 				}
 				delete(me.jobsByTime, jobTime)
@@ -131,7 +132,8 @@ LOOP:
 			expiredJobTimes = map[int64]struct{}{}
 			for jobTime := lastTime + 1; jobTime <= now.Unix(); jobTime++ {
 				for _, job := range me.jobsByTime[jobTime] {
-					delete(me.jobsById, job.Id)
+					mapKey := job.Key + ":" + job.Id
+					delete(me.jobsById, mapKey)
 					me.dispatchJobs <- job
 				}
 				delete(me.jobsByTime, jobTime)
