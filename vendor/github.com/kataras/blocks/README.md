@@ -1,6 +1,6 @@
 # Blocks
 
-[![build status](https://img.shields.io/github/workflow/status/kataras/blocks/CI/main?style=for-the-badge)](https://github.com/kataras/blocks/actions) [![report card](https://img.shields.io/badge/report%20card-a%2B-ff3333.svg?style=for-the-badge)](https://goreportcard.com/report/github.com/kataras/blocks) [![godocs](https://img.shields.io/badge/go-%20docs-488AC7.svg?style=for-the-badge)](https://pkg.go.dev/github.com/kataras/blocks)
+[![build status](https://img.shields.io/github/actions/workflow/status/kataras/blocks/ci.yml?style=for-the-badge)](https://github.com/kataras/blocks/actions) [![report card](https://img.shields.io/badge/report%20card-a%2B-ff3333.svg?style=for-the-badge)](https://goreportcard.com/report/github.com/kataras/blocks) [![godocs](https://img.shields.io/badge/go-%20docs-488AC7.svg?style=for-the-badge)](https://pkg.go.dev/github.com/kataras/blocks)
 
 Blocks is a, simple, Go-idiomatic view engine based on [html/template](https://pkg.go.dev/html/template?tab=doc#Template), plus the following features:
 
@@ -9,18 +9,22 @@ Blocks is a, simple, Go-idiomatic view engine based on [html/template](https://p
 - Load with optional context for cancelation
 - Reload templates on development stage
 - Full Layouts and Blocks support
+- Automatic HTML comments removal
+- Memory File System
 - Markdown Content
 - Global [FuncMap](https://pkg.go.dev/html/template?tab=doc#FuncMap)
 
 ## Installation
 
-The only requirement is the [Go Programming Language](https://golang.org/dl).
+The only requirement is the [Go Programming Language](https://go.dev/dl).
 
 ```sh
-$ go get github.com/kataras/blocks
+$ go get github.com/kataras/blocks@latest
 ```
 
 ## Getting Started
+
+> Extensive and thorough **[documentation](DOC.md)** making it easy to get started with Blocks.
 
 Create a folder named **./views** and put some HTML template files.
 
@@ -98,11 +102,11 @@ After the initialization and engine's customizations the user SHOULD call its [L
 err := views.Load()
 ```
 
-To render a template through a compatible [io.Writer](https://golang.org/pkg/io/#Writer) use the [ExecuteTemplate(w io.Writer, tmplName, layoutName string, data interface{})](https://pkg.go.dev/github.com/kataras/blocks?tab=doc#Blocks.ExecuteTemplate) method.
+To render a template through a compatible [io.Writer](https://golang.org/pkg/io/#Writer) use the [ExecuteTemplate(w io.Writer, tmplName, layoutName string, data any)](https://pkg.go.dev/github.com/kataras/blocks?tab=doc#Blocks.ExecuteTemplate) method.
 
 ```go
 func handler(w http.ResponseWriter, r *http.Request) {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"Title": "Index Title",
 	}
 

@@ -7,9 +7,9 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -40,8 +40,9 @@ type Blocks struct {
 	fs fs.FS
 
 	rootDir           string // it always set to "/" as the RootDir method changes the filesystem to sub one.
-	layoutDir         string // /layouts
+	layoutDir         string // the default is "/layouts". Empty, means the end-developer should provide the relative to root path of the layout template.
 	layoutFuncs       template.FuncMap
+	tmplFuncs         template.FuncMap
 	defaultLayoutName string // the default layout if it's missing from the `ExecuteTemplate`.
 	extension         string // .html
 	left, right       string // delims.
@@ -62,8 +63,6 @@ type Blocks struct {
 
 // New returns a fresh Blocks engine instance.
 // It loads the templates based on the given fs FileSystem (or string).
-// By default the layout files should be located at "$rootDir/layouts" sub-directory (see `RootDir` method),
-// change this behavior can be achieved through `LayoutDir` method before `Load/LoadContext`.
 // To set a default layout name for an empty layout definition on `ExecuteTemplate/ParseTemplate`
 // use the `DefaultLayout` method.
 //
@@ -84,7 +83,7 @@ type Blocks struct {
 // New("./views") or
 // New(http.Dir("./views")) or
 // New(embeddedFS) or New(AssetFile()) for embedded data.
-func New(fs interface{}) *Blocks {
+func New(fs any) *Blocks {
 	v := &Blocks{
 		fs:        getFS(fs),
 		layoutDir: "/layouts",
@@ -95,9 +94,9 @@ func New(fs interface{}) *Blocks {
 		left:  "{{",
 		right: "}}",
 		// Root "content" for the default one, so templates without layout can still be rendered.
-		// Note that, this is parsed, the delims can be customzized later on.
+		// Note that, this is parsed, the delims can be configured later on.
 		Root: template.Must(template.New("root").
-			Parse(`{{ define "root" }} {{ template "content" . }} {{ end }}`)),
+			Parse(`{{ define "root" }} {{- template "content" . -}} {{ end }}`)),
 		Templates:  make(map[string]*template.Template),
 		Layouts:    make(map[string]*template.Template),
 		reload:     false,
@@ -143,6 +142,16 @@ func (v *Blocks) Delims(left, right string) *Blocks {
 	return v
 }
 
+// This should be on and should not change, as the go parser will try to parse
+// define blocks inside comments too.
+//
+// RemoveComments sets the engine to remove all HTML comments from the templates.
+// This is useful when you want to serve the templates as HTML without comments.
+// func (v *Blocks) RemoveComments(b bool) *Blocks {
+// 	v.removeComments = b
+// 	return v
+// }
+
 // Option sets options for the templates. Options are described by
 // strings, either a simple string or "key=value". There can be at
 // most one equals sign in an option string. If the option string
@@ -175,8 +184,32 @@ func (v *Blocks) Option(opt ...string) *Blocks {
 // The default function map contains a single element of "partial" which
 // can be used to render templates directly.
 func (v *Blocks) Funcs(funcMap template.FuncMap) *Blocks {
+	if v.tmplFuncs == nil {
+		v.tmplFuncs = funcMap
+		return v
+	}
+
+	for name, fn := range funcMap {
+		v.tmplFuncs[name] = fn
+	}
+
 	v.Root.Funcs(funcMap)
 	return v
+}
+
+// AddFunc adds a function to the root template's function map.
+func (v *Blocks) AddFunc(funcName string, fn any) {
+	if v.tmplFuncs == nil {
+		v.tmplFuncs = make(template.FuncMap)
+	}
+
+	v.tmplFuncs[funcName] = fn
+	v.Root.Funcs(v.tmplFuncs)
+}
+
+// Ext returns the template file extension (with dot).
+func (v *Blocks) Ext() string {
+	return v.extension
 }
 
 // LayoutFuncs same as `Funcs` but this map's elements will be added
@@ -212,7 +245,8 @@ func (v *Blocks) RootDir(root string) *Blocks {
 
 // LayoutDir sets a custom layouts directory,
 // always relative to the "rootDir" one.
-// Layouts are recognised by their prefix names.
+// This can be used to trim the layout directory from the template's name,
+// for example: layouts/main -> main on ExecuteTemplate's "layoutName" argument.
 // Defaults to "layouts".
 func (v *Blocks) LayoutDir(relToDirLayoutDir string) *Blocks {
 	v.layoutDir = filepath.ToSlash(relToDirLayoutDir)
@@ -262,6 +296,9 @@ func (v *Blocks) LoadWithContext(ctx context.Context) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
+	clearMap(v.Templates)
+	clearMap(v.Layouts)
+
 	return v.load(ctx)
 }
 
@@ -269,82 +306,27 @@ func (v *Blocks) load(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var (
-		layouts []string
-		mu      sync.RWMutex
-	)
-
-	var assetNames []string // all assets names.
-	err := walk(v.fs, "", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() || !info.Mode().IsRegular() {
-			return nil
-		}
-
-		assetNames = append(assetNames, path)
-		return nil
-	})
+	filesMap, err := readFiles(ctx, v.fs, v.rootDir)
 	if err != nil {
 		return err
 	}
 
-	if len(assetNames) == 0 {
-		return fmt.Errorf("no templates found")
+	if len(filesMap) == 0 {
+		return fmt.Errorf("no template files found")
 	}
 
-	// +---------------------+
-	// |   Template Assets   |
-	// +---------------------+
-	loadAsset := func(assetName string) error {
-		if dir := relDir(v.rootDir); dir != "" && !strings.HasPrefix(assetName, dir) {
-			// If contains a not empty directory and the asset name does not belong there
-			// then skip it, useful on bindata assets when they
-			// may contain other files that are not templates.
-			return nil
-		}
+	// templatesContents is used to keep the contents of each content template in order
+	// to be parsed on each layout, so all content templates have all layouts available,
+	// and all layouts can inject all content templates.
+	contentTemplates := make(map[string]string)
+	// layoutTemplates is used to keep the contents of each layout template.
+	layoutTemplates := make(map[string]string)
 
-		if layoutDir := relDir(v.layoutDir); layoutDir != "" &&
-			strings.HasPrefix(assetName, layoutDir) {
-			// it's a layout template file, add it to layouts and skip,
-			// in order to add them to each template file.
-			mu.Lock()
-
-			layouts = append(layouts, assetName)
-			mu.Unlock()
-			return nil
-		}
-
-		tmplName := trimDir(assetName, v.rootDir)
-
-		ext := path.Ext(assetName)
-		tmplName = strings.TrimSuffix(tmplName, ext)
-		tmplName = strings.TrimPrefix(tmplName, "/")
-
-		extParser := v.extensionHandler[ext]
-		hasHandler := extParser != nil // it may exists but if it's nil then we can't use it.
-		if v.extension != "" {
-			if ext != v.extension && !hasHandler {
-				return nil
-			}
-		}
-
-		contents, err := asset(v.fs, assetName)
-		if err != nil {
-			return err
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			break
-		}
-
-		if hasHandler {
-			contents, err = extParser(contents)
+	// collect all content and layout template contents.
+	for filename, data := range filesMap {
+		ext := path.Ext(filename)
+		if extParser := v.extensionHandler[ext]; extParser != nil {
+			data, err = extParser(data) // let the parser modify the contents.
 			if err != nil {
 				// custom parsers may return a non-nil error,
 				// e.g. less or scss files
@@ -352,103 +334,73 @@ func (v *Blocks) load(ctx context.Context) error {
 				// because they are wrapped by a template block if necessary.
 				return err
 			}
+		} else if ext != v.extension {
+			continue // extension not match with the given template extension and the extension handler is nil.
 		}
 
-		mu.Lock()
-		v.Templates[tmplName], err = v.Root.Clone()
-		mu.Unlock()
+		contents := string(data)
+		// Remove HTML comments.
+		contents = removeComments(contents)
+
+		tmplName := trimDir(filename, v.rootDir)
+		tmplName = strings.TrimPrefix(tmplName, "/")
+		tmplName = strings.TrimSuffix(tmplName, v.extension)
+
+		if isLayoutTemplate(contents) {
+			// Replace any {{ yield . }} with {{ template "content" . }}.
+			contents = replaceYieldWithTemplateContent(contents)
+			// Remove any given layout dir.
+			tmplName = trimDir(tmplName, v.layoutDir)
+			layoutTemplates[tmplName] = contents
+			continue
+		}
+
+		// Inject the define content block.
+		if !strings.Contains(contents, defineStart(v.left)) && !strings.Contains(contents, defineStartNoSpace(v.left)) {
+			contents = defineContentStart(v.left, v.right) + contents + defineContentEnd(v.left, v.right)
+		}
+
+		contentTemplates[tmplName] = contents
+	}
+
+	// Load the content templates first.
+	for tmplName, contents := range contentTemplates {
+		tmpl, err := v.Root.Clone()
 		if err != nil {
 			return err
 		}
 
-		str := string(contents)
-
-		// should have any kind of template or the whole as content template,
-		// if not we will make it as a single template definition.
-		if !strings.Contains(str, defineStart(v.left)) && !strings.Contains(str, defineStartNoSpace(v.left)) {
-			str = defineContentStart(v.left, v.right) + str + defineContentEnd(v.left, v.right)
-		}
-
-		mu.RLock()
-		_, err = v.Templates[tmplName].Parse(str)
-		mu.RUnlock()
-		return err
-	}
-
-	var (
-		wg      sync.WaitGroup
-		errOnce sync.Once
-	)
-
-	for _, assetName := range assetNames {
-		wg.Add(1)
-
-		go func(assetName string) {
-			defer wg.Done()
-
-			if loadErr := loadAsset(assetName); loadErr != nil {
-				errOnce.Do(func() {
-					err = loadErr
-					cancel()
-				})
-			}
-		}(assetName)
-	}
-
-	wg.Wait()
-	if err != nil {
-		return err
-	}
-
-	// +---------------------+
-	// |       Layouts       |
-	// +---------------------+
-	loadLayout := func(layout string) error {
-		contents, err := asset(v.fs, layout)
+		_, err = tmpl.Funcs(v.tmplFuncs).Parse(contents)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %s: %s", err, tmplName, contents)
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			break
-		}
+		v.Templates[tmplName] = tmpl
+	}
 
-		name := trimDir(layout, v.layoutDir) // if we want rel-to-the-dir instead we just replace with v.rootDir.
-		name = strings.TrimSuffix(name, v.extension)
-		str := string(contents)
-
-		for _, tmpl := range v.Templates {
-			mu.Lock()
-			v.Layouts[name], err = tmpl.New(name).Funcs(v.layoutFuncs).Parse(str)
-			mu.Unlock()
+	// Load the layout templates.
+	layoutBuiltinFuncs := translateFuncs(v, builtins)
+	for tmplName, contents := range layoutTemplates {
+		for contentTmplName, contentTmplContents := range contentTemplates {
+			// Make new layout template for each of the content templates,
+			// the key of the layout in map will be the layoutName+tmplName.
+			// So each template owns all layouts. This fixes the issue with the new {{ block }} and the usual {{ define }} directives.
+			layoutTmpl, err := template.New(tmplName).Funcs(layoutBuiltinFuncs).Funcs(v.layoutFuncs).Parse(contents)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: for layout: %s", err, tmplName)
 			}
+
+			_, err = layoutTmpl.Funcs(v.tmplFuncs).Parse(contentTmplContents)
+			if err != nil {
+				return fmt.Errorf("%w: layout: %s: for template: %s", err, tmplName, contentTmplName)
+			}
+
+			key := makeLayoutTemplateName(contentTmplName, tmplName)
+			v.Layouts[key] = layoutTmpl
 		}
-
-		return nil
 	}
 
-	for _, layout := range layouts {
-		wg.Add(1)
-		go func(layout string) {
-			defer wg.Done()
-
-			if loadErr := loadLayout(layout); loadErr != nil {
-				errOnce.Do(func() {
-					err = loadErr
-					cancel()
-				})
-			}
-		}(layout)
-	}
-
-	wg.Wait()
-
-	return err
+	return nil
 }
 
 // ExecuteTemplate applies the template associated with "tmplName"
@@ -462,7 +414,7 @@ func (v *Blocks) load(ctx context.Context) error {
 //
 // A template may be executed safely in parallel, although if parallel
 // executions share a Writer the output may be interleaved.
-func (v *Blocks) ExecuteTemplate(w io.Writer, tmplName, layoutName string, data interface{}) error {
+func (v *Blocks) ExecuteTemplate(w io.Writer, tmplName, layoutName string, data any) error {
 	if v.reload {
 		if err := v.Load(); err != nil {
 			return err
@@ -476,7 +428,22 @@ func (v *Blocks) ExecuteTemplate(w io.Writer, tmplName, layoutName string, data 
 	return v.executeTemplate(w, tmplName, layoutName, data)
 }
 
-func (v *Blocks) executeTemplate(w io.Writer, tmplName, layoutName string, data interface{}) error {
+func (v *Blocks) executeTemplate(w io.Writer, tmplName, layoutName string, data any) error {
+	tmplName = strings.TrimSuffix(tmplName, v.extension) // trim any extension provided by mistake or by migrating from other engines.
+
+	if layoutName != "" {
+		layoutName = strings.TrimSuffix(layoutName, v.extension)
+		layoutName = strings.TrimPrefix(layoutName, v.layoutDir)
+		layoutName = strings.TrimPrefix(layoutName, "/")
+
+		tmpl := v.getTemplateWithLayout(tmplName, layoutName)
+		if tmpl == nil {
+			return ErrNotExist{layoutName}
+		}
+
+		return tmpl.Execute(w, data)
+	}
+
 	tmpl, ok := v.Templates[tmplName]
 	if !ok {
 		return ErrNotExist{tmplName}
@@ -487,16 +454,16 @@ func (v *Blocks) executeTemplate(w io.Writer, tmplName, layoutName string, data 
 	// 	httpResponseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// }  ^ No, leave it for the caller.
 
-	if layoutName != "" {
-		return tmpl.ExecuteTemplate(w, layoutName, data)
-	}
+	// if layoutName != "" {
+	// 	return tmpl.ExecuteTemplate(w, layoutName, data)
+	// }
 	return tmpl.Execute(w, data)
 }
 
-// ParseTemplate parses a template based on its "tmplName" name and returns the result.
+// TemplateString executes a template based on its "tmplName" name and returns its contents result.
 // Note that, this does not reload the templates on each call if Reload was set to true.
 // To refresh the templates you have to manually call the `Load` upfront.
-func (v *Blocks) ParseTemplate(tmplName, layoutName string, data interface{}) (string, error) {
+func (v *Blocks) TemplateString(tmplName, layoutName string, data any) (string, error) {
 	b := v.bufferPool.Get()
 	// use the unexported method so it does not re-reload the templates on each partial one
 	// when Reload was set to true.
@@ -507,8 +474,12 @@ func (v *Blocks) ParseTemplate(tmplName, layoutName string, data interface{}) (s
 }
 
 // PartialFunc returns the parsed result of the "partialName" template's "content" block.
-func (v *Blocks) PartialFunc(partialName string, data interface{}) (template.HTML, error) {
-	contents, err := v.ParseTemplate(partialName, "content", data)
+func (v *Blocks) PartialFunc(partialName string, data any) (template.HTML, error) {
+	// contents, err := v.ParseTemplate(partialName, "content", data)
+	// if err != nil {
+	// 	return "", err
+	// }
+	contents, err := v.TemplateString(partialName, "", data)
 	if err != nil {
 		return "", err
 	}
@@ -583,6 +554,46 @@ func relDir(dir string) string {
 }
 
 func trimDir(s string, dir string) string {
+	if dir == "" {
+		return s
+	}
 	dir = withSuffix(relDir(dir), "/")
 	return strings.TrimPrefix(s, dir)
+}
+
+func (v *Blocks) getTemplateWithLayout(tmplName, layoutName string) *template.Template {
+	key := makeLayoutTemplateName(tmplName, layoutName)
+	return v.Layouts[key]
+}
+
+func makeLayoutTemplateName(tmplName, layoutName string) string {
+	return layoutName + tmplName
+}
+
+// Regular expression to match HTML comments.
+var matchHTMLCommentsRegex = regexp.MustCompile(`<!--[\s\S]*?-->`)
+
+func removeComments(str string) string {
+	return matchHTMLCommentsRegex.ReplaceAllString(str, "")
+}
+
+var yieldMatchRegex = regexp.MustCompile(`{{-?\s*yield\s*(.*?)\s*-?}}`)
+
+// replaceYieldWithTemplateContent replaces any {{ yield . }} or similar patterns with {{ template "content" . }}.
+func replaceYieldWithTemplateContent(input string) string {
+	return yieldMatchRegex.ReplaceAllString(input, `{{ template "content" $1 }}`)
+}
+
+// Regex pattern to match various forms of {{ template "content" ... }} and {{ yield ... }}
+var layoutPatternRegex = regexp.MustCompile(`{{-?\s*(template\s*"content"\s*[^}]*|yield\s*[^}]*)\s*-?}}`)
+
+// isLayoutTemplate checks if the template contents indicate it is a layout template.
+func isLayoutTemplate(contents string) bool {
+	return layoutPatternRegex.MatchString(contents)
+}
+
+func clearMap[M ~map[K]V, K comparable, V any](m M) {
+	for k := range m {
+		delete(m, k)
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -293,6 +292,14 @@ type (
 	FallbackViewLayout = context.FallbackViewLayout
 )
 
+// Component returns a new Handler which can be registered as a main handler for a route.
+// It's a shortcut handler that renders the given component as HTML through Context.RenderComponent.
+func Component(component context.Component) Handler {
+	return func(ctx Context) {
+		ctx.RenderComponent(component)
+	}
+}
+
 // PrefixDir returns a new FileSystem that opens files
 // by adding the given "prefix" to the directory tree of "fs".
 //
@@ -318,8 +325,16 @@ type prefixedDir struct {
 }
 
 func (p *prefixedDir) Open(name string) (http.File, error) {
-	name = path.Join(p.prefix, name)
-	return p.fs.Open(name)
+	destPath, _, ok, err := context.SafeFilename(p.prefix, name)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, http.ErrMissingFile // unsafe.
+	}
+
+	//	name = path.Join(destPath, filename)
+	return p.fs.Open(destPath)
 }
 
 type partyConfiguratorMiddleware struct {
@@ -336,18 +351,18 @@ func ConfigureMiddleware(handlers ...Handler) router.PartyConfigurator {
 	return &partyConfiguratorMiddleware{handlers: handlers}
 }
 
-var (
-	// Compression is a middleware which enables
-	// writing and reading using the best offered compression.
-	// Usage:
-	// app.Use (for matched routes)
-	// app.UseRouter (for both matched and 404s or other HTTP errors).
-	Compression = func(ctx Context) {
-		ctx.CompressWriter(true)
-		ctx.CompressReader(true)
-		ctx.Next()
-	}
+// Compression is a middleware which enables
+// writing and reading using the best offered compression.
+// Usage:
+// app.Use (for matched routes)
+// app.UseRouter (for both matched and 404s or other HTTP errors).
+func Compression(ctx Context) {
+	ctx.CompressWriter(true)
+	ctx.CompressReader(true)
+	ctx.Next()
+}
 
+var (
 	// AllowQuerySemicolons returns a middleware that serves requests by converting any
 	// unescaped semicolons(;) in the URL query to ampersands(&).
 	//
@@ -507,6 +522,15 @@ var (
 	// A shortcut of the `cache#Cache304`.
 	Cache304 = cache.Cache304
 
+	// CookieOverride is a CookieOption which overrides the cookie explicitly to the given "cookie".
+	//
+	// A shortcut for the `context#CookieOverride`.
+	CookieOverride = context.CookieOverride
+	// CookieDomain is a CookieOption which sets the cookie's Domain field.
+	// If empty then the current domain is used.
+	//
+	// A shortcut for the `context#CookieDomain`.
+	CookieDomain = context.CookieDomain
 	// CookieAllowReclaim accepts the Context itself.
 	// If set it will add the cookie to (on `CookieSet`, `CookieSetKV`, `CookieUpsert`)
 	// or remove the cookie from (on `CookieRemove`) the Request object too.

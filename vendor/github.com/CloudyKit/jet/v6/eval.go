@@ -1634,8 +1634,10 @@ func resolveIndex(v, index reflect.Value, indexAsStr string) (reflect.Value, err
 			}
 			cachedStructsMutex.Unlock()
 		}
+
 		if id, ok := cache[key]; ok {
-			return v.FieldByIndex(id), nil
+			field := v.FieldByIndex(id)
+			return indirectEface(field), nil
 		}
 
 		// Slow path: use reflect directly
@@ -1706,6 +1708,10 @@ func buildCache(typ reflect.Type, cache map[string][]int, parent []int) {
 		index[len(parent)] = i
 
 		field := typ.Field(i)
+		if field.PkgPath != "" {
+			// field is unexported, skip
+			continue
+		}
 		if field.Anonymous {
 			typ := field.Type
 			if typ.Kind() == reflect.Struct {

@@ -23,6 +23,8 @@ type Set struct {
 	developmentMode bool
 	leftDelim       string
 	rightDelim      string
+	leftComment       string
+	rightComment     string
 }
 
 // Option is the type of option functions that can be used in NewSet().
@@ -84,6 +86,15 @@ func WithDelims(left, right string) Option {
 	}
 }
 
+// WithCommentDelims returns an option function that sets the comment delimiters to the specified strings.
+// Parsed templates will inherit the settings. Not setting them leaves them at the default: `{*` and `*}`.
+func WithCommentDelims(left, right string) Option {
+	return func(s *Set) {
+		s.leftComment = left
+		s.rightComment = right
+	}
+}
+
 // WithTemplateNameExtensions returns an option function that sets the extensions to try when looking
 // up template names in the cache or loader. Default extensions are `""` (no extension), `".jet"`,
 // `".html.jet"`, `".jet.html"`. Extensions will be tried in the order they are defined in the slice.
@@ -100,8 +111,14 @@ func WithTemplateNameExtensions(extensions []string) Option {
 // InDevelopmentMode returns an option function that toggles development mode on, meaning the cache will
 // always be bypassed and every template lookup will go to the loader.
 func InDevelopmentMode() Option {
+	return DevelopmentMode(true)
+}
+
+// DevelopmentMode returns an option function that sets development mode on or off. "On" means the cache will
+// always be bypassed and every template lookup will go to the loader.
+func DevelopmentMode(mode bool) Option {
 	return func(s *Set) {
-		s.developmentMode = true
+		s.developmentMode = mode
 	}
 }
 

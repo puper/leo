@@ -2,7 +2,7 @@ package context
 
 import (
 	"bytes"
-	stdContext "context"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -78,7 +78,7 @@ type (
 	// BodyDecoderWithContext same as BodyDecoder but it can accept a standard context,
 	// which is binded to the HTTP request's context.
 	BodyDecoderWithContext interface {
-		DecodeContext(ctx stdContext.Context, data []byte) error
+		DecodeContext(ctx context.Context, data []byte) error
 	}
 
 	// Unmarshaler is the interface implemented by types that can unmarshal any raw data.
@@ -275,8 +275,8 @@ func IsErrCanceled(err error) bool {
 
 	var netErr net.Error
 	return (errors.As(err, &netErr) && netErr.Timeout()) ||
-		errors.Is(err, stdContext.Canceled) ||
-		errors.Is(err, stdContext.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(err, http.ErrHandlerTimeout) ||
 		err.Error() == "closed pool"
 }
@@ -437,7 +437,7 @@ var acquireGoroutines = func() interface{} {
 	return &goroutines{wg: new(sync.WaitGroup)}
 }
 
-func (ctx *Context) Go(fn func(cancelCtx stdContext.Context)) (running int) {
+func (ctx *Context) Go(fn func(cancelCtx context.Context)) (running int) {
 	g := ctx.values.GetOrSet(goroutinesContextKey, acquireGoroutines).(*goroutines)
 	if fn != nil {
 		g.wg.Add(1)
@@ -448,7 +448,7 @@ func (ctx *Context) Go(fn func(cancelCtx stdContext.Context)) (running int) {
 
 		ctx.waitFunc = g.wg.Wait
 
-		go func(reqCtx stdContext.Context) {
+		go func(reqCtx context.Context) {
 			fn(reqCtx)
 			g.wg.Done()
 
@@ -2380,6 +2380,65 @@ func (ctx *Context) FormFiles(key string, before ...func(*Context, *multipart.Fi
 	return nil, nil, http.ErrMissingFile
 }
 
+var (
+	// ValidFileNameRegexp is used to validate the user input by using a regular expression.
+	// See `Context.UploadFormFiles` method.
+	ValidFilenameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+	// ValidExtensionRegexp acts as an allowlist of valid extensions. It's optional. Defaults to nil (all file extensions are allowed to be uploaded).
+	// See `Context.UploadFormFiles` method.
+	ValidExtensionRegexp *regexp.Regexp
+)
+
+// SafeFilename returns a safe filename based on the given name.
+//   - Using filepath.Base and filepath.ToSlash: This ensures that only the base file name is used, without any directory components,
+//     and converts all separators to slashes. This is a good practice to prevent directory traversal.
+//   - Regular Expression for Filenames: The ValidFilenameRegexp ensures that filenames are restricted to a safe character set.
+//     This helps prevent the use of special characters that could lead to path traversal or other types of injection attacks.
+//   - Extension Validation: If you have a ValidExtensionRegexp, it would further ensure that the file has an expected and safe extension, which is another good practice.
+//   - Canonical Path Check: By evaluating symlinks and ensuring that the destination path starts with the canonical destination directory, you’re adding.
+//
+// It returns the safe prefix directory (destination directory), the safe filename, a boolean indicating whether the filename is safe, and an error if any.
+func SafeFilename(prefixDir string, name string) (string, string, bool, error) {
+	// Security fix for go < 1.17.5:
+	// Reported by Kirill Efimov (snyk.io) through security reports.
+	filename := filepath.Base(filepath.ToSlash(name))
+
+	// CWE-99.
+
+	// Sanitize the user input by using a regular expression
+	// and an allowlist of valid extensions
+	isValidFilename := ValidFilenameRegexp.MatchString(filename)
+	if !isValidFilename {
+		// Reject the input as it is invalid or unsafe.
+		return prefixDir, name, false, nil
+	}
+
+	if ValidExtensionRegexp != nil && !ValidExtensionRegexp.MatchString(filename) {
+		// Reject the input as it is invalid or unsafe.
+		return prefixDir, name, false, nil
+	}
+
+	var destPath string
+	if prefixDir != "" {
+		// Join the sanitized input with the destination directory.
+		destPath = filepath.Join(prefixDir, filename)
+
+		// Get the canonical path of the destination directory.
+		canonicalDestDir, err := filepath.EvalSymlinks(prefixDir) // the prefix dir should exists.
+		if err != nil {
+			return prefixDir, name, false, fmt.Errorf("dest directory: %s: eval symlinks: %w", prefixDir, err)
+		}
+
+		// Check if the destination path is within the destination directory.
+		if !strings.HasPrefix(destPath, canonicalDestDir) {
+			// Reject the input as it is a path traversal attempt.
+			return prefixDir, name, false, nil
+		}
+	}
+
+	return destPath, filename, true, nil
+}
+
 // UploadFormFiles uploads any received file(s) from the client
 // to the system physical location "destDirectory".
 //
@@ -2418,17 +2477,23 @@ func (ctx *Context) UploadFormFiles(destDirectory string, before ...func(*Contex
 			for _, files := range fhs {
 			innerLoop:
 				for _, file := range files {
-					// Security fix for go < 1.17.5:
-					// Reported by Kirill Efimov (snyk.io) through security reports.
-					file.Filename = filepath.Base(file.Filename)
-
 					for _, b := range before {
 						if !b(ctx, file) {
 							continue innerLoop
 						}
 					}
 
-					n0, err0 := ctx.SaveFormFile(file, filepath.Join(destDirectory, file.Filename))
+					destPath, filename, ok, err := SafeFilename(destDirectory, file.Filename)
+					if err != nil {
+						return nil, 0, err
+					}
+					if !ok {
+						continue
+					}
+
+					file.Filename = filename
+
+					n0, err0 := ctx.SaveFormFile(file, destPath)
 					if err0 != nil {
 						return nil, 0, err0
 					}
@@ -2794,8 +2859,8 @@ func (ctx *Context) ReadYAML(outPtr interface{}) error {
 
 var (
 	// IsErrEmptyJSON reports whether the given "err" is caused by a
-	// Context.ReadJSON call when the request body
-	// didn't start with { or it was totally empty.
+	// Client.ReadJSON call when the request body was empty or
+	// didn't start with { or [.
 	IsErrEmptyJSON = func(err error) bool {
 		if err == nil {
 			return false
@@ -2810,8 +2875,9 @@ var (
 			return v.Offset == 0 && v.Error() == "unexpected end of JSON input"
 		}
 
-		// when optimization is enabled, the jsoniter will report the following error:
-		return strings.Contains(err.Error(), "readObjectStart: expect {")
+		errMsg := err.Error()
+		// 3rd party pacakges:
+		return strings.Contains(errMsg, "readObjectStart: expect {") || strings.Contains(errMsg, "readArrayStart: expect [")
 	}
 
 	// IsErrPath can be used at `context#ReadForm` and `context#ReadQuery`.
@@ -4210,6 +4276,10 @@ func (h ErrorHandlerFunc) HandleContextError(ctx *Context, err error) {
 }
 
 func (ctx *Context) handleContextError(err error) {
+	if err == nil {
+		return
+	}
+
 	if errHandler := ctx.app.GetContextErrorHandler(); errHandler != nil {
 		errHandler.HandleContextError(ctx, err)
 	} else {
@@ -4240,6 +4310,28 @@ func (ctx *Context) Render(statusCode int, r interface {
 	if err := r.Render(ctx.writer); err != nil {
 		ctx.StopWithError(http.StatusInternalServerError, err)
 	}
+}
+
+// Component is the interface which all components must implement.
+// A component is a struct which can be rendered to a writer.
+// It's being used by the `Context.RenderComponent` method.
+// An example of compatible Component is a templ.Component.
+type Component interface {
+	Render(context.Context, io.Writer) error
+}
+
+// RenderComponent renders a component to the client.
+// It sets the "Content-Type" header to "text/html; charset=utf-8".
+// It reports any component render errors back to the caller.
+// Look the Application.SetContextErrorHandler to override the
+// default status code 500 with a custom error response.
+func (ctx *Context) RenderComponent(component Component) error {
+	ctx.ContentType("text/html; charset=utf-8")
+	err := component.Render(ctx.Request().Context(), ctx.ResponseWriter())
+	if err != nil {
+		ctx.handleContextError(err)
+	}
+	return err
 }
 
 // JSON marshals the given "v" value to JSON and writes the response to the client.
@@ -5338,7 +5430,7 @@ func (ctx *Context) ServeContent(content io.ReadSeeker, filename string, modtime
 // represents one byte. See "golang.org/x/time/rate" package.
 type rateReadSeeker struct {
 	io.ReadSeeker
-	ctx     stdContext.Context
+	ctx     context.Context
 	limiter *rate.Limiter
 }
 
@@ -5497,10 +5589,39 @@ func CookieIncluded(cookie *http.Cookie, cookieNames []string) bool {
 	return true
 }
 
-var cookieNameSanitizer = strings.NewReplacer("\n", "-", "\r", "-")
+// var cookieNameSanitizer = strings.NewReplacer("\n", "-", "\r", "-")
+//
+// func sanitizeCookieName(n string) string {
+// 	return cookieNameSanitizer.Replace(n)
+// }
 
-func sanitizeCookieName(n string) string {
-	return cookieNameSanitizer.Replace(n)
+// CookieOverride is a CookieOption which overrides the cookie explicitly to the given "cookie".
+//
+// Usage:
+// ctx.RemoveCookie("the_cookie_name", iris.CookieOverride(&http.Cookie{Domain: "example.com"}))
+func CookieOverride(cookie *http.Cookie) CookieOption { // The "Cookie" word method name is reserved as it's used as an alias.
+	return func(_ *Context, c *http.Cookie, op uint8) {
+		if op == OpCookieGet {
+			return
+		}
+
+		*cookie = *c
+	}
+}
+
+// CookieDomain is a CookieOption which sets the cookie's Domain field.
+// If empty then the current domain is used.
+//
+// Usage:
+// ctx.RemoveCookie("the_cookie_name", iris.CookieDomain("example.com"))
+func CookieDomain(domain string) CookieOption {
+	return func(_ *Context, c *http.Cookie, op uint8) {
+		if op == OpCookieGet {
+			return
+		}
+
+		c.Domain = domain
+	}
 }
 
 // CookieAllowReclaim accepts the Context itself.
@@ -5698,6 +5819,8 @@ const cookieOptionsContextKey = "iris.cookie.options"
 // cookies sent or received from the next Handler in the chain.
 //
 // Available builtin Cookie options are:
+//   - CookieOverride
+//   - CookieDomain
 //   - CookieAllowReclaim
 //   - CookieAllowSubdomains
 //   - CookieSecure
@@ -5865,28 +5988,35 @@ func (ctx *Context) GetRequestCookie(name string, options ...CookieOption) (*htt
 
 var (
 	// CookieExpireDelete may be set on Cookie.Expire for expiring the given cookie.
-	CookieExpireDelete = time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+	CookieExpireDelete = memstore.ExpireDelete
 
 	// CookieExpireUnlimited indicates that does expires after 24 years.
 	CookieExpireUnlimited = time.Now().AddDate(24, 10, 10)
 )
 
 // RemoveCookie deletes a cookie by its name and path = "/".
-// Tip: change the cookie's path to the current one by: RemoveCookie("name", iris.CookieCleanPath)
+// Tip: change the cookie's path to the current one by: RemoveCookie("the_cookie_name", iris.CookieCleanPath)
+//
+// If you intend to remove a cookie with a specific domain and value, please ensure to pass these values explicitly:
+//
+//	ctx.RemoveCookie("the_cookie_name", iris.CookieDomain("example.com"), iris.CookiePath("/"))
+//
+// OR use a Cookie value instead:
+//
+//	ctx.RemoveCookie("the_cookie_name", iris.CookieOverride(&http.Cookie{Domain: "example.com", Path: "/"}))
 //
 // Example: https://github.com/kataras/iris/tree/main/_examples/cookies/basic
 func (ctx *Context) RemoveCookie(name string, options ...CookieOption) {
-	c := &http.Cookie{}
+	c := &http.Cookie{Path: "/"}
+	// Send the cookie back to the client
+	ctx.applyCookieOptions(c, OpCookieDel, options)
 	c.Name = name
 	c.Value = ""
-	c.Path = "/" // if user wants to change it, use of the CookieOption `CookiePath` is required if not `ctx.SetCookie`.
 	c.HttpOnly = true
-
-	// RFC says 1 second, but let's do it 1  to make sure is working
+	// Set the cookie expiration date to a past time
 	c.Expires = CookieExpireDelete
-	c.MaxAge = -1
+	c.MaxAge = -1 // RFC says 1 second, but let's do it -1  to make sure is working.
 
-	ctx.applyCookieOptions(c, OpCookieDel, options)
 	http.SetCookie(ctx.writer, c)
 }
 
@@ -6220,11 +6350,13 @@ func (ctx *Context) GetErrPublic() (bool, error) {
 // which recovers from a manual panic.
 type ErrPanicRecovery struct {
 	ErrPrivate
-	Cause              interface{}
-	Callers            []string // file:line callers.
-	Stack              []byte   // the full debug stack.
-	RegisteredHandlers []string // file:line of all registered handlers.
-	CurrentHandler     string   // the handler panic came from.
+	Cause                  interface{}
+	Callers                []string // file:line callers.
+	Stack                  []byte   // the full debug stack.
+	RegisteredHandlers     []string // file:line of all registered handlers.
+	CurrentHandlerFileLine string   // the handler panic came from.
+	CurrentHandlerName     string   // the handler name panic came from.
+	Request                string   // the http dumped request.
 }
 
 // Error implements the Go standard error type.
@@ -6235,13 +6367,22 @@ func (e *ErrPanicRecovery) Error() string {
 		}
 	}
 
-	return fmt.Sprintf("%v\n%s", e.Cause, strings.Join(e.Callers, "\n"))
+	return fmt.Sprintf("%v\n%s\nRequest:\n%s", e.Cause, strings.Join(e.Callers, "\n"), e.Request)
 }
 
 // Is completes the internal errors.Is interface.
 func (e *ErrPanicRecovery) Is(err error) bool {
 	_, ok := IsErrPanicRecovery(err)
 	return ok
+}
+
+func (e *ErrPanicRecovery) LogMessage() string {
+	logMessage := fmt.Sprintf("Recovered from a route's Handler('%s')\n", e.CurrentHandlerName)
+	logMessage += fmt.Sprint(e.Request)
+	logMessage += fmt.Sprintf("%s\n", e.Cause)
+	logMessage += fmt.Sprintf("%s\n", strings.Join(e.Callers, "\n"))
+
+	return logMessage
 }
 
 // IsErrPanicRecovery reports whether the given "err" is a type of ErrPanicRecovery.
@@ -6411,7 +6552,7 @@ func (ctx *Context) User() User {
 }
 
 // Ensure Iris Context implements the standard Context package, build-time.
-var _ stdContext.Context = (*Context)(nil)
+var _ context.Context = (*Context)(nil)
 
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is

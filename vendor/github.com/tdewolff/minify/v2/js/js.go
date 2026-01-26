@@ -3,7 +3,9 @@ package js
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"sort"
 
 	"github.com/tdewolff/minify/v2"
 	"github.com/tdewolff/parse/v2"
@@ -36,9 +38,12 @@ func Minify(m *minify.M, w io.Writer, r io.Reader, params map[string]string) err
 }
 
 // Minify minifies JS data, it reads from r and writes to w.
-func (o *Minifier) Minify(_ *minify.M, w io.Writer, r io.Reader, _ map[string]string) error {
+func (o *Minifier) Minify(_ *minify.M, w io.Writer, r io.Reader, params map[string]string) error {
 	z := parse.NewInput(r)
-	ast, err := js.Parse(z, js.Options{WhileToFor: true})
+	ast, err := js.Parse(z, js.Options{
+		WhileToFor: true,
+		Inline:     params != nil && params["inline"] == "1",
+	})
 	if err != nil {
 		return err
 	}
@@ -263,7 +268,7 @@ func (m *jsMinifier) minifyStmt(i js.IStmt) {
 		m.minifyExpr(stmt.Init, js.OpExpr)
 		m.write(closeParenOpenBracketBytes)
 		m.needsSemicolon = false
-		for i, _ := range stmt.List {
+		for i := range stmt.List {
 			stmt.List[i].List = optimizeStmtList(stmt.List[i].List, defaultBlock)
 		}
 		m.renamer.renameScope(stmt.Scope)
@@ -322,37 +327,39 @@ func (m *jsMinifier) minifyStmt(i js.IStmt) {
 		m.requireSemicolon()
 	case *js.EmptyStmt:
 	case *js.ImportStmt:
-		m.write(importBytes)
-		if stmt.Default != nil {
-			m.write(spaceBytes)
-			m.write(stmt.Default)
-			if len(stmt.List) != 0 {
-				m.write(commaBytes)
-			} else if stmt.Default != nil || len(stmt.List) != 0 {
+		if stmt.Default != nil || stmt.List == nil || 0 < len(stmt.List) {
+			m.write(importBytes)
+			if stmt.Default != nil {
 				m.write(spaceBytes)
-			}
-		}
-		if len(stmt.List) == 1 && len(stmt.List[0].Name) == 1 && stmt.List[0].Name[0] == '*' {
-			m.writeSpaceBeforeIdent()
-			m.minifyAlias(stmt.List[0])
-			if stmt.Default != nil || len(stmt.List) != 0 {
-				m.write(spaceBytes)
-			}
-		} else if 0 < len(stmt.List) {
-			m.write(openBraceBytes)
-			for i, item := range stmt.List {
-				if i != 0 {
+				m.write(stmt.Default)
+				if stmt.List != nil {
 					m.write(commaBytes)
+				} else if stmt.Default != nil {
+					m.write(spaceBytes)
 				}
-				m.minifyAlias(item)
 			}
-			m.write(closeBraceBytes)
+			if len(stmt.List) == 1 && len(stmt.List[0].Name) == 1 && stmt.List[0].Name[0] == '*' {
+				m.writeSpaceBeforeIdent()
+				m.minifyAlias(stmt.List[0])
+				if stmt.Default != nil || len(stmt.List) != 0 {
+					m.write(spaceBytes)
+				}
+			} else if stmt.List != nil {
+				m.write(openBraceBytes)
+				for i, item := range stmt.List {
+					if i != 0 {
+						m.write(commaBytes)
+					}
+					m.minifyAlias(item)
+				}
+				m.write(closeBraceBytes)
+			}
+			if stmt.Default != nil || stmt.List != nil {
+				m.write(fromBytes)
+			}
+			m.write(minifyString(stmt.Module, false))
+			m.requireSemicolon()
 		}
-		if stmt.Default != nil || len(stmt.List) != 0 {
-			m.write(fromBytes)
-		}
-		m.write(minifyString(stmt.Module, false))
-		m.requireSemicolon()
 	case *js.ExportStmt:
 		m.write(exportBytes)
 		if stmt.Decl != nil {
@@ -536,29 +543,24 @@ func (m *jsMinifier) minifyVarDecl(decl *js.VarDecl, onlyDefines bool) {
 			}
 		}
 	} else {
-		if decl.TokenType == js.VarToken && len(decl.List) <= 10000 {
-			// move single var decls forward and order for GZIP optimization
-			start := 0
-			if _, ok := decl.List[0].Binding.(*js.Var); !ok {
-				start++
-			}
-			for i := 0; i < len(decl.List); i++ {
-				item := decl.List[i]
-				if v, ok := item.Binding.(*js.Var); ok && item.Default == nil && len(v.Data) == 1 {
-					for j := start; j < len(decl.List); j++ {
-						if v2, ok := decl.List[j].Binding.(*js.Var); ok && decl.List[j].Default == nil && len(v2.Data) == 1 {
-							if m.renamer.identOrder[v2.Data[0]] < m.renamer.identOrder[v.Data[0]] {
-								continue
-							} else if m.renamer.identOrder[v2.Data[0]] == m.renamer.identOrder[v.Data[0]] {
-								break
-							}
+		if decl.TokenType == js.VarToken {
+			sort.SliceStable(decl.List, func(i, j int) bool {
+				if decl.List[i].Default == nil && decl.List[j].Default == nil {
+					// sort single-length variables names
+					// TODO: why not all names? Why need identOrder?
+					if a, ok := decl.List[i].Binding.(*js.Var); ok && len(a.Data) == 1 {
+						if b, ok := decl.List[j].Binding.(*js.Var); ok && len(b.Data) == 1 {
+							return m.renamer.identOrder[a.Data[0]] < m.renamer.identOrder[b.Data[0]]
 						}
-						decl.List = append(decl.List[:i], decl.List[i+1:]...)
-						decl.List = append(decl.List[:j], append([]js.BindingElement{item}, decl.List[j:]...)...)
-						break
+					}
+				} else if decl.List[i].Default == nil {
+					if _, ok := decl.List[j].Binding.(*js.Var); j != 0 || ok {
+						// move non-define declarations to the front, except for the first array/object
+						return true
 					}
 				}
-			}
+				return false
+			})
 		}
 
 		m.write(decl.TokenType.Bytes())
@@ -573,6 +575,18 @@ func (m *jsMinifier) minifyVarDecl(decl *js.VarDecl, onlyDefines bool) {
 }
 
 func (m *jsMinifier) minifyFuncDecl(decl *js.FuncDecl, inExpr bool) {
+	// TODO: rewrite to arrow function if doe snot refer to this?
+	//if !decl.Generator && decl.Name != nil && (!inExpr || 1 < decl.Name.Uses) {
+	//	m.write(decl.Name.Data)
+	//	m.write(equalBytes)
+	//	m.minifyArrowFunc(&js.ArrowFunc{
+	//		Async:  decl.Async,
+	//		Params: decl.Params,
+	//		Body:   decl.Body,
+	//	})
+	//	return
+	//}
+
 	parentRename := m.renamer.rename
 	m.renamer.rename = !decl.Body.Scope.HasWith && !m.o.KeepVarNames
 	m.hoistVars(&decl.Body)
@@ -614,6 +628,14 @@ func (m *jsMinifier) minifyFuncDecl(decl *js.FuncDecl, inExpr bool) {
 	m.renamer.rename = parentRename
 }
 
+func (m *jsMinifier) minifyClassElementName(name js.ClassElementName) {
+	if name.Private != nil {
+		m.write(name.Private.Data)
+	} else {
+		m.minifyPropertyName(name.PropertyName)
+	}
+}
+
 func (m *jsMinifier) minifyMethodDecl(decl *js.MethodDecl) {
 	parentRename := m.renamer.rename
 	m.renamer.rename = !decl.Body.Scope.HasWith && !m.o.KeepVarNames
@@ -640,7 +662,7 @@ func (m *jsMinifier) minifyMethodDecl(decl *js.MethodDecl) {
 		m.write(setBytes)
 		m.writeSpaceBeforeIdent()
 	}
-	m.minifyPropertyName(decl.Name)
+	m.minifyClassElementName(decl.Name)
 	m.renamer.renameScope(decl.Body.Scope)
 	m.minifyParams(decl.Params, !decl.Set)
 	m.minifyBlockStmt(&decl.Body)
@@ -731,6 +753,7 @@ func (m *jsMinifier) minifyClassDecl(decl *js.ClassDecl) {
 		m.writeSpaceBeforeIdent()
 		m.minifyExpr(decl.Extends, js.OpLHS)
 	}
+	m.renamer.renameClassScope(decl.Scope)
 	m.write(openBraceBytes)
 	m.needsSemicolon = false
 	for _, item := range decl.List {
@@ -747,7 +770,7 @@ func (m *jsMinifier) minifyClassDecl(decl *js.ClassDecl) {
 					m.write(spaceBytes)
 				}
 			}
-			m.minifyPropertyName(item.Name)
+			m.minifyClassElementName(item.Name)
 			if item.Init != nil {
 				m.write(equalBytes)
 				m.minifyExpr(item.Init, js.OpAssign)
@@ -861,13 +884,13 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 			expr = expr.Link
 		}
 		data := expr.Data
-		if bytes.Equal(data, undefinedBytes) { // TODO: only if not defined
-			if js.OpUnary < prec {
-				m.write(groupedVoidZeroBytes)
+		if expr.Decl == js.NoDecl && bytes.Equal(data, undefinedBytes) {
+			if js.OpMember < prec {
+				m.write(groupedZeroIndexBytes)
 			} else {
-				m.write(voidZeroBytes)
+				m.write(zeroIndexBytes)
 			}
-		} else if bytes.Equal(data, infinityBytes) { // TODO: only if not defined
+		} else if expr.Decl == js.NoDecl && bytes.Equal(data, infinityBytes) {
 			if js.OpMul < prec {
 				m.write(groupedOneDivZeroBytes)
 			} else {
@@ -877,7 +900,7 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 			m.write(data)
 		}
 	case *js.LiteralExpr:
-		if expr.TokenType == js.DecimalToken {
+		if expr.TokenType == js.DecimalToken || expr.TokenType == js.IntegerToken {
 			m.write(decimalNumber(expr.Data, m.o.Precision))
 		} else if expr.TokenType == js.BinaryToken {
 			m.write(binaryNumber(expr.Data, m.o.Precision))
@@ -898,7 +921,7 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 				m.write(notOneBytes)
 			}
 		} else if expr.TokenType == js.StringToken {
-			m.write(minifyString(expr.Data, true))
+			m.write(minifyString(expr.Data, m.o.minVersion(2015)))
 		} else if expr.TokenType == js.RegExpToken {
 			// </script>/ => < /script>/
 			if 0 < len(m.prev) && m.prev[len(m.prev)-1] == '<' && bytes.HasPrefix(expr.Data, regExpScriptBytes) {
@@ -956,13 +979,10 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 				expr = &js.BinaryExpr{op, v, &js.LiteralExpr{js.NullToken, nullBytes}}
 			}
 
-			m.minifyExpr(expr.X, precLeft)
-			if expr.Op == js.GtToken && m.prev[len(m.prev)-1] == '-' {
-				// 0 < len(m.prev) always
-				m.write(spaceBytes)
-			} else if expr.Op == js.EqEqEqToken || expr.Op == js.NotEqEqToken {
+			if expr.Op == js.EqEqEqToken || expr.Op == js.NotEqEqToken {
 				if left, ok := expr.X.(*js.UnaryExpr); ok && left.Op == js.TypeofToken {
 					if right, ok := expr.Y.(*js.LiteralExpr); ok && right.TokenType == js.StringToken {
+						// typeof a === "string"  =>  typeof a == "string"
 						if expr.Op == js.EqEqEqToken {
 							expr.Op = js.EqEqToken
 						} else {
@@ -971,6 +991,7 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 					}
 				} else if right, ok := expr.Y.(*js.UnaryExpr); ok && right.Op == js.TypeofToken {
 					if left, ok := expr.X.(*js.LiteralExpr); ok && left.TokenType == js.StringToken {
+						// "string" === typeof a  =>  "string" == typeof a
 						if expr.Op == js.EqEqEqToken {
 							expr.Op = js.EqEqToken
 						} else {
@@ -978,6 +999,65 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 						}
 					}
 				}
+			} else if expr.Op == js.AndToken {
+				// TODO: use truthy instead of true?
+				if (isTrue(expr.X) || isFalse(expr.Y)) && !hasSideEffects(expr.X) {
+					m.minifyExpr(expr.Y, prec)
+					break
+				} else if (isTrue(expr.Y) || isFalse(expr.X)) && !hasSideEffects(expr.Y) {
+					m.minifyExpr(expr.X, prec)
+					break
+				}
+			} else if expr.Op == js.OrToken {
+				// TODO: use truthy instead of true?
+				if (isTrue(expr.X) || isFalse(expr.Y)) && !hasSideEffects(expr.Y) {
+					m.minifyExpr(expr.X, prec)
+					break
+				} else if (isTrue(expr.Y) || isFalse(expr.X)) && !hasSideEffects(expr.X) {
+					m.minifyExpr(expr.Y, prec)
+					break
+				}
+			} else if expr.Op == js.EqToken {
+				if left, ok := expr.X.(*js.Var); ok {
+					if right, ok := expr.Y.(*js.BinaryExpr); ok {
+						var y js.IExpr
+						var varLeft bool
+						if v, ok := right.X.(*js.Var); ok && v == left {
+							y = right.Y
+							varLeft = true
+						} else if v, ok := right.Y.(*js.Var); ok && v == left {
+							y = right.X
+						}
+						if y != nil {
+							if lit, ok := y.(*js.LiteralExpr); ok && (right.Op == js.AddToken || varLeft && right.Op == js.SubToken) && lit.TokenType == js.IntegerToken && len(lit.Data) == 1 && lit.Data[0] == '1' {
+								if right.Op == js.AddToken {
+									// a=a+1  =>  ++a
+									m.write(plusPlusBytes)
+									m.minifyExpr(left, js.OpUnary)
+									break
+								} else {
+									// a=a-1  =>  --a
+									m.write(minMinBytes)
+									m.minifyExpr(left, js.OpUnary)
+									break
+								}
+								// TODO: may break implicit "evaluation" of variables? see #863
+								//} else if right.Op == js.AddToken || right.Op == js.SubToken || right.Op == js.MulToken || right.Op == js.DivToken || right.Op == js.ModToken || right.Op == js.ExpToken || right.Op == js.LtLtToken || right.Op == js.GtGtToken || right.Op == js.GtGtGtToken || right.Op == js.BitAndToken || right.Op == js.BitOrToken || right.Op == js.BitXorToken {
+								//	// a=a+b  =>  a+=b
+								//	m.minifyExpr(left, js.OpLHS)
+								//	m.write(right.Op.Bytes())
+								//	m.write(equalBytes)
+								//	m.minifyExpr(y, js.OpAssign)
+								//	break
+							}
+						}
+					}
+				}
+			}
+			m.minifyExpr(expr.X, precLeft)
+			if expr.Op == js.GtToken && m.prev[len(m.prev)-1] == '-' {
+				// 0 < len(m.prev) always
+				m.write(spaceBytes)
 			}
 			m.write(expr.Op.Bytes())
 			if expr.Op == js.AddToken {
@@ -996,6 +1076,8 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 		if expr.Op == js.PostIncrToken || expr.Op == js.PostDecrToken {
 			m.minifyExpr(expr.X, unaryPrecMap[expr.Op])
 			m.write(expr.Op.Bytes())
+		} else if expr.Op == js.VoidToken && !hasSideEffects(expr.X) {
+			m.write(zeroIndexBytes)
 		} else {
 			isLtNot := expr.Op == js.NotToken && 0 < len(m.prev) && m.prev[len(m.prev)-1] == '<'
 			m.write(expr.Op.Bytes())
@@ -1009,12 +1091,24 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 				// <!--  =>  <! --
 				m.writeSpaceBefore('-')
 			} else if expr.Op == js.NotToken {
-				if lit, ok := expr.X.(*js.LiteralExpr); ok && (lit.TokenType == js.StringToken || lit.TokenType == js.RegExpToken) {
-					// !"string"  =>  !1
+				if lit, ok := expr.X.(*js.LiteralExpr); ok && lit.TokenType == js.StringToken {
+					if len(lit.Data) == 2 {
+						// !""  =>  !0
+						m.write(zeroBytes)
+					} else {
+						// !"string"  =>  !1
+						m.write(oneBytes)
+					}
+					break
+				} else if ok && lit.TokenType == js.RegExpToken {
+					// !/regexp/  =>  !1
 					m.write(oneBytes)
 					break
-				} else if ok && lit.TokenType == js.DecimalToken {
+				} else if ok && (lit.TokenType == js.DecimalToken || lit.TokenType == js.IntegerToken) {
 					// !123  =>  !1 (except for !0)
+					if lit.Data[len(lit.Data)-1] == 'n' {
+						lit.Data = lit.Data[:len(lit.Data)-1]
+					}
 					if num := minify.Number(lit.Data, m.o.Precision); len(num) == 1 && num[0] == '0' {
 						m.write(zeroBytes)
 					} else {
@@ -1026,31 +1120,40 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 			m.minifyExpr(expr.X, unaryPrecMap[expr.Op])
 		}
 	case *js.DotExpr:
+		var yData []byte
+		if lit, ok := expr.Y.(js.LiteralExpr); ok {
+			yData = lit.Data
+		} else if v, ok := expr.Y.(*js.Var); ok {
+			for v.Link != nil {
+				v = v.Link
+			}
+			yData = v.Data
+		} else {
+			panic(fmt.Sprintf("bad type: %T!=(js.LiteralExpr,*js.Var)", expr.Y)) // should never happen
+		}
+
+		optionalLeft := false
 		if group, ok := expr.X.(*js.GroupExpr); ok {
-			if lit, ok := group.X.(*js.LiteralExpr); ok && lit.TokenType == js.DecimalToken {
-				num := minify.Number(lit.Data, m.o.Precision)
-				isInt := true
-				for _, c := range num {
-					if c == '.' || c == 'e' || c == 'E' {
-						isInt = false
-						break
-					}
-				}
-				if isInt {
-					m.write(num)
-					m.write(dotBytes)
+			if lit, ok := group.X.(*js.LiteralExpr); ok && (lit.TokenType == js.DecimalToken || lit.TokenType == js.IntegerToken) {
+				if lit.TokenType == js.DecimalToken {
+					m.write(minify.Number(lit.Data, m.o.Precision))
 				} else {
-					m.write(num)
+					m.write(lit.Data)
+					m.write(dotBytes)
 				}
 				m.write(dotBytes)
-				m.write(expr.Y.Data)
+				m.write(yData)
 				break
+			} else if dot, ok := group.X.(*js.DotExpr); ok {
+				optionalLeft = dot.Optional
+			} else if call, ok := group.X.(*js.CallExpr); ok {
+				optionalLeft = call.Optional
 			}
 		}
-		if prec < js.OpMember {
-			m.minifyExpr(expr.X, js.OpCall)
-		} else {
+		if js.OpMember <= prec || optionalLeft {
 			m.minifyExpr(expr.X, js.OpMember)
+		} else {
+			m.minifyExpr(expr.X, js.OpCall)
 		}
 		if expr.Optional {
 			m.write(questionBytes)
@@ -1069,7 +1172,7 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 			}
 		}
 		m.write(dotBytes)
-		m.write(expr.Y.Data)
+		m.write(yData)
 	case *js.GroupExpr:
 		if cond, ok := expr.X.(*js.CondExpr); ok {
 			expr.X = m.optimizeCondExpr(cond, js.OpExpr)
@@ -1137,10 +1240,18 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 		parentInFor := m.inFor
 		m.inFor = false
 		for _, item := range expr.List {
-			m.write(replaceEscapes(item.Value, '`', 1, 2))
+			if expr.Tag == nil {
+				m.write(replaceEscapes(item.Value, '`', 1, 2))
+			} else {
+				m.write(item.Value)
+			}
 			m.minifyExpr(item.Expr, js.OpExpr)
 		}
-		m.write(replaceEscapes(expr.Tail, '`', 1, 1))
+		if expr.Tag == nil {
+			m.write(replaceEscapes(expr.Tail, '`', 1, 1))
+		} else {
+			m.write(expr.Tail)
+		}
 		m.inFor = parentInFor
 	case *js.NewExpr:
 		if expr.Args == nil && js.OpLHS < prec && prec != js.OpNew {
@@ -1162,10 +1273,6 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 		m.write(newTargetBytes)
 		m.writeSpaceBeforeIdent()
 	case *js.ImportMetaExpr:
-		if m.expectExpr == expectExprStmt {
-			m.write(openParenBytes)
-			m.groupedStmt = true
-		}
 		m.write(importMetaBytes)
 		m.writeSpaceBeforeIdent()
 	case *js.YieldExpr:
@@ -1175,11 +1282,115 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 			if expr.Generator {
 				m.write(starBytes)
 				m.minifyExpr(expr.X, js.OpAssign)
-			} else if v, ok := expr.X.(*js.Var); !ok || !bytes.Equal(v.Name(), undefinedBytes) { // TODO: only if not defined
+			} else if v, ok := expr.X.(*js.Var); !ok || !bytes.Equal(v.Name(), undefinedBytes) || v.Decl != js.NoDecl {
 				m.minifyExpr(expr.X, js.OpAssign)
 			}
 		}
 	case *js.CallExpr:
+		if v, ok := expr.X.(*js.Var); ok && v.Decl == js.NoDecl {
+			if bytes.Equal(v.Data, NumberBytes) {
+				// Number(x) => +x
+				if len(expr.Args.List) == 1 {
+					if lit, ok := expr.Args.List[0].Value.(*js.LiteralExpr); ok && lit.TokenType == js.TrueToken {
+						m.write(oneBytes)
+						break
+					} else if ok && (lit.TokenType == js.FalseToken || lit.TokenType == js.NullToken) {
+						m.write(zeroBytes)
+						break
+					} else if ok && lit.TokenType == js.DecimalToken {
+						m.minifyExpr(lit, prec)
+						break
+					} else if ok && (lit.TokenType == js.IntegerToken || lit.TokenType == js.BinaryToken || lit.TokenType == js.OctalToken || lit.TokenType == js.HexadecimalToken) {
+						if lit.Data[len(lit.Data)-1] == 'n' {
+							lit.Data = lit.Data[:len(lit.Data)-1]
+						}
+						m.minifyExpr(lit, prec)
+						break
+					} else if v, ok := expr.Args.List[0].Value.(*js.Var); ok && v.Decl == js.NoDecl && bytes.Equal(v.Data, undefinedBytes) {
+						m.write(nanBytes)
+						break
+						//} else {
+						//	if js.OpUnary < prec {
+						//		m.write(openParenBytes)
+						//	}
+						//	m.write(plusBytes)
+						//	m.minifyExpr(&js.GroupExpr{expr.Args.List[0].Value}, js.OpUnary)
+						//	if js.OpUnary < prec {
+						//		m.write(closeParenBytes)
+						//	}
+					}
+				}
+			}
+		} else if dot, ok := expr.X.(*js.DotExpr); ok {
+			if x, ok := dot.X.(*js.Var); ok && x.Decl == js.NoDecl && bytes.Equal(x.Data, MathBytes) {
+				if y, ok := dot.Y.(js.LiteralExpr); ok {
+					if bytes.Equal(y.Data, []byte("pow")) {
+						// Math.pow(a,b) => a**b
+						if len(expr.Args.List) == 2 {
+							if js.OpExp < prec {
+								m.write(openParenBytes)
+							}
+							m.minifyExpr(&js.GroupExpr{expr.Args.List[0].Value}, js.OpUpdate)
+							m.write(expBytes)
+							m.minifyExpr(&js.GroupExpr{expr.Args.List[1].Value}, js.OpExp)
+							if js.OpExp < prec {
+								m.write(closeParenBytes)
+							}
+							break
+						}
+					} else if bytes.Equal(y.Data, []byte("trunc")) {
+						// Math.trunc(x) => x|0
+						if len(expr.Args.List) == 1 {
+							if js.OpBitOr < prec {
+								m.write(openParenBytes)
+							}
+							m.minifyExpr(&js.GroupExpr{expr.Args.List[0].Value}, js.OpBitOr)
+							m.write(bitOrBytes)
+							m.write(zeroBytes)
+							if js.OpBitOr < prec {
+								m.write(closeParenBytes)
+							}
+							break
+						}
+					} else if bytes.Equal(y.Data, []byte("abs")) {
+						// Math.abs(x) => x<0?-x:x
+						if len(expr.Args.List) == 1 {
+							groupLen := 0
+							if js.OpAssign < prec {
+								groupLen = 2
+							}
+							if v, ok := expr.Args.List[0].Value.(*js.Var); ok && len(v.Data)*2+groupLen+5 < 10 {
+								if js.OpAssign < prec {
+									m.write(openParenBytes)
+								}
+								m.minifyExpr(v, js.OpCoalesce)
+								m.write([]byte("<0?-"))
+								m.minifyExpr(v, js.OpAssign)
+								m.write(colonBytes)
+								m.minifyExpr(v, js.OpAssign)
+								if js.OpAssign < prec {
+									m.write(closeParenBytes)
+								}
+								break
+							}
+						}
+					} else if bytes.Equal(y.Data, []byte("sqrt")) {
+						// Math.sqrt(x) => x**.5
+						if len(expr.Args.List) == 1 {
+							if js.OpExp < prec {
+								m.write(openParenBytes)
+							}
+							m.minifyExpr(&js.GroupExpr{expr.Args.List[0].Value}, js.OpUpdate)
+							m.write([]byte("**.5"))
+							if js.OpExp < prec {
+								m.write(closeParenBytes)
+							}
+							break
+						}
+					}
+				}
+			}
+		}
 		m.minifyExpr(expr.X, js.OpCall)
 		parentInFor := m.inFor
 		m.inFor = false
@@ -1199,12 +1410,15 @@ func (m *jsMinifier) minifyExpr(i js.IExpr, prec js.OpPrec) {
 		} else {
 			m.minifyExpr(expr.X, js.OpMember)
 		}
+
 		if expr.Optional {
 			m.write(optChainBytes)
 		}
 		if lit, ok := expr.Y.(*js.LiteralExpr); ok && lit.TokenType == js.StringToken && 2 < len(lit.Data) {
 			if isIdent := js.AsIdentifierName(lit.Data[1 : len(lit.Data)-1]); isIdent {
-				m.write(dotBytes)
+				if !expr.Optional {
+					m.write(dotBytes)
+				}
 				m.write(lit.Data[1 : len(lit.Data)-1])
 				break
 			} else if isNum := js.AsDecimalLiteral(lit.Data[1 : len(lit.Data)-1]); isNum {

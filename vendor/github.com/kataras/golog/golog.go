@@ -3,22 +3,12 @@ package golog
 import (
 	"io"
 	"time"
-
-	"github.com/kataras/pio"
 )
 
 // Now is called to set the log's timestamp value.
 // It can be altered through initialization of the program
 // to customize the behavior of getting the current time.
 var Now func() time.Time = time.Now
-
-// NewLine can override the default package-level line breaker, "\n".
-// It should be called (in-sync) before  the print or leveled functions.
-//
-// See `github.com/kataras/pio#NewLine` and `Logger#NewLine` too.
-func NewLine(newLineChar string) {
-	pio.NewLine = []byte(newLineChar)
-}
 
 // Default is the package-level ready-to-use logger,
 // level had set to "info", is changeable.
@@ -73,12 +63,12 @@ func RegisterFormatter(f Formatter) *Logger {
 }
 
 // SetFormat sets a default formatter for all log levels.
-func SetFormat(formatter string, opts ...interface{}) *Logger {
+func SetFormat(formatter string, opts ...any) *Logger {
 	return Default.SetFormat(formatter, opts...)
 }
 
 // SetLevelFormat changes the output format for the given "levelName".
-func SetLevelFormat(levelName string, formatter string, opts ...interface{}) *Logger {
+func SetLevelFormat(levelName string, formatter string, opts ...any) *Logger {
 	return Default.SetLevelFormat(levelName, formatter, opts...)
 }
 
@@ -112,74 +102,74 @@ func SetLevel(levelName string) {
 }
 
 // Print prints a log message without levels and colors.
-func Print(v ...interface{}) {
+func Print(v ...any) {
 	Default.Print(v...)
 }
 
 // Println prints a log message without levels and colors.
 // It adds a new line at the end.
-func Println(v ...interface{}) {
+func Println(v ...any) {
 	Default.Println(v...)
 }
 
 // Logf prints a leveled log message to the output.
 // This method can be used to use custom log levels if needed.
 // It adds a new line in the end.
-func Logf(level Level, format string, args ...interface{}) {
+func Logf(level Level, format string, args ...any) {
 	Default.Logf(level, format, args...)
 }
 
 // Fatal `os.Exit(1)` exit no matter the level of the logger.
 // If the logger's level is fatal, error, warn, info or debug
 // then it will print the log message too.
-func Fatal(v ...interface{}) {
+func Fatal(v ...any) {
 	Default.Fatal(v...)
 }
 
 // Fatalf will `os.Exit(1)` no matter the level of the logger.
 // If the logger's level is fatal, error, warn, info or debug
 // then it will print the log message too.
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	Default.Fatalf(format, args...)
 }
 
 // Error will print only when logger's Level is error, warn, info or debug.
-func Error(v ...interface{}) {
+func Error(v ...any) {
 	Default.Error(v...)
 }
 
 // Errorf will print only when logger's Level is error, warn, info or debug.
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	Default.Errorf(format, args...)
 }
 
 // Warn will print when logger's Level is warn, info or debug.
-func Warn(v ...interface{}) {
+func Warn(v ...any) {
 	Default.Warn(v...)
 }
 
 // Warnf will print when logger's Level is warn, info or debug.
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	Default.Warnf(format, args...)
 }
 
 // Info will print when logger's Level is info or debug.
-func Info(v ...interface{}) {
+func Info(v ...any) {
 	Default.Info(v...)
 }
 
 // Infof will print when logger's Level is info or debug.
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	Default.Infof(format, args...)
 }
 
 // Debug will print when logger's Level is debug.
-func Debug(v ...interface{}) {
+func Debug(v ...any) {
 	Default.Debug(v...)
 }
 
 // Debugf will print when logger's Level is debug.
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	Default.Debugf(format, args...)
 }
 
@@ -191,28 +181,24 @@ func Debugf(format string, args ...interface{}) {
 //
 // For example, if you want to print using a logrus
 // logger you can do the following:
-// `golog.Install(logrus.StandardLogger())`
 //
-// Look `golog#Handle` for more.
-func Install(logger ExternalLogger) {
-	Default.Install(logger)
-}
-
-// InstallStd receives  a standard logger
-// and automatically adapts its print functions.
+//	Install(logrus.StandardLogger())
 //
-// Install adds a golog handler to support third-party integrations,
-// it can be used only once per `golog#Logger` instance.
-//
-// Example Code:
+// Or the standard log's Logger:
 //
 //	import "log"
 //	myLogger := log.New(os.Stdout, "", 0)
-//	InstallStd(myLogger)
+//	Install(myLogger)
 //
-// Look `golog#Handle` for more.
-func InstallStd(logger StdLogger) {
-	Default.InstallStd(logger)
+// Or even the slog/log's Logger:
+//
+//	import "log/slog"
+//	myLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+//	Install(myLogger) OR Install(slog.Default())
+//
+// Look `golog#Logger.Handle` for more.
+func Install(logger any) {
+	Default.Install(logger)
 }
 
 // Handle adds a log handler to the default logger.
@@ -231,13 +217,6 @@ func Handle(handler Handler) {
 	Default.Handle(handler)
 }
 
-// Hijack adds a hijacker to the low-level logger's Printer.
-// If you need to implement such as a low-level hijacker manually,
-// then you have to make use of the pio library.
-func Hijack(hijacker func(ctx *pio.Ctx)) {
-	Default.Hijack(hijacker)
-}
-
 // Scan scans everything from "r" and prints
 // its new contents to the logger's Printer's Output,
 // forever or until the returning "cancel" is fired, once.
@@ -251,7 +230,7 @@ func Scan(r io.Reader) (cancel func()) {
 // Can be used to separate logs by category.
 // If the "key" is string then it's used as prefix,
 // which is appended to the current prefix one.
-func Child(key interface{}) *Logger {
+func Child(key any) *Logger {
 	return Default.Child(key)
 }
 

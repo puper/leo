@@ -1,3 +1,51 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Sun 24 Aug 2025 | v0.1.14
+
+### Added
+- **Memory Management for Child Loggers**: New methods to prevent memory leaks in long-running applications
+  - `RemoveChild(key any) bool` - Remove specific child logger by key
+  - `ClearChildren()` - Remove all child loggers at once
+  - `ChildCount() int` - Get current number of child loggers
+  - `ListChildKeys() []any` - List all child logger keys
+- **Enhanced Scan Functionality**: Complete implementation of the `Scan()` method
+  - Time-formatted input scanning with `bufio.Scanner`
+  - Goroutine-based processing for non-blocking operation
+  - Proper resource cleanup and error handling
+
+### Changed
+- **Removed External Dependencies**: Eliminated `github.com/kataras/pio` dependency
+  - Replaced with lightweight internal printer system
+  - Maintained 100% API compatibility
+  - Reduced binary size and simplified dependency management
+- **Improved Performance**: Streamlined internal architecture
+  - Direct formatting via `formatLog()` method instead of complex hijacking
+  - Atomic operations for thread-safe multi-writer support
+  - More efficient color and styling system
+
+## Wed 24 April 2024 | v0.1.12
+
+Accept `slog.Attr` among with `golog.Fields` for extra log data. 
+
+## Wed 11 November 2023 | v0.1.11
+
+- Add integration for `"log/slog"` package:
+
+```go
+import "log/slog"
+
+// [...]
+myLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+golog.Install(myLogger) // OR just  golog.Install(slog.Default())
+```
+
+- The `InstallStd` method was removed, use the `Install` method instead, it receives `any` instead of just `ExternalLogger` now.
+
 ## Sat 29 October 2022 | v0.1.8
 
 Add `golog.Now` variable so 3rd-parties can customize the time.Now functionality used in golog.Log.Time and Timestamp.
@@ -11,8 +59,8 @@ Fix `Clone` not inherite the parent's formatters field (fixes `SetLevelFormat` o
 Introduce the [Formatter](https://github.com/kataras/golog/blob/master/formatter.go) interface. [Example](https://github.com/kataras/golog/tree/master/_examples/customize-output).
 
 - Add `Logger.RegisterFormatter(Formatter)` to register a custom `Formatter`.
-- Add `Logger.SetFormat(formatter string, opts ...interface{})` to set the default formatter for all log levels.
-- Add `Logger.SetLevelFormat(levelName string, formatter string, opts ...interface{})` to change the output format for the given "levelName".
+- Add `Logger.SetFormat(formatter string, opts ...any)` to set the default formatter for all log levels.
+- Add `Logger.SetLevelFormat(levelName string, formatter string, opts ...any)` to change the output format for the given "levelName".
 
 ## Su 06 September | v0.1.3 and v0.1.4
 
@@ -21,7 +69,7 @@ Introduce the [Formatter](https://github.com/kataras/golog/blob/master/formatter
 
 ## Sa 15 August | v0.1.2
 
-- `Logger.Child` accepts an `interface{}` instead of `string`. This way you can register children for pointers without forcing to naming them. If the key is string or completes the `fmt.Stringer` interface, then it's used as prefix (like always did).
+- `Logger.Child` accepts an `any` instead of `string`. This way you can register children for pointers without forcing to naming them. If the key is string or completes the `fmt.Stringer` interface, then it's used as prefix (like always did).
 
 ## Fr 14 August 2020 | v0.0.19
 

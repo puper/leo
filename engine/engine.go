@@ -107,7 +107,7 @@ func (me *Engine) Get(name string) any {
 func (me *Engine) Wait() error {
 	stop := make(chan struct{})
 	go func() {
-		sChan := make(chan os.Signal)
+		sChan := make(chan os.Signal, 1)
 		for {
 			signal.Notify(sChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 			sig := <-sChan

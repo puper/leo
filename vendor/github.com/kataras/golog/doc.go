@@ -1,7 +1,7 @@
 /*
 CBSD 3-Clause License
 
-Copyright (c) 2017-2022, Gerasimos (Makis) Maropoulos (kataras2006@hotmail.com)
+Copyright (c) 2017-2025, Gerasimos (Makis) Maropoulos (kataras2006@hotmail.com)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,7 @@ Source code and other details for the project are available at GitHub:
 
 # Current Version
 
-0.1.8
+0.1.14
 
 # Installation
 
@@ -129,12 +129,6 @@ Golog takes a simple `io.Writer` as its underline Printer's Output.
 Example Code:
 
 	golog.SetOutput(io.Writer)
-
-You can even override the default line braker, "\n", by using the `golog#NewLine` function at startup.
-
-Example Code:
-
-	golog.NewLine("\r\n")
 
 # Levels
 
@@ -266,24 +260,23 @@ Outline:
 	//
 	// For example, if you want to print using a logrus
 	// logger you can do the following:
-	// `golog.Install(logrus.StandardLogger())`
 	//
-	// Look `golog#Handle` for more.
-	Install(logger ExternalLogger)
-
-	// InstallStd receives  a standard logger
-	// and automatically adapts its print functions.
+	//	Install(logrus.StandardLogger())
 	//
-	// Install adds a golog handler to support third-party integrations,
-	// it can be used only once per `golog#Logger` instance.
+	// Or the standard log's Logger:
 	//
-	// Example Code:
 	//	import "log"
 	//	myLogger := log.New(os.Stdout, "", 0)
-	//	InstallStd(myLogger)
+	//	Install(myLogger)
 	//
-	// Look `golog#Handle` for more.
-	InstallStd(logger StdLogger)
+	// Or even the slog/log's Logger:
+	//
+	//	import "log/slog"
+	//	myLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	//	Install(myLogger) OR Install(slog.Default())
+	//
+	// Look `golog#Logger.Handle` for more.
+	Install(logger ExternalLogger)
 
 # Logrus Integration
 
@@ -350,7 +343,7 @@ Example Code:
 
 	func main() {
 		golog.SetLevel("error")
-		golog.InstallStd(myLogger)
+		golog.Install(myLogger)
 
 		golog.Debug(`this debug message will not be shown,
 		because the golog level is ErrorLevel`)
@@ -372,4 +365,4 @@ Examples:
 package golog
 
 // Version is the version string representation of the "golog" package.
-const Version = "0.1.8"
+const Version = "0.1.12"

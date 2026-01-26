@@ -1,5 +1,7 @@
-goreferrer
-==========
+goreferrer (No longer maintained)
+=================================
+
+**⚠️ NOTE: This project is not maintained and will not receive any updates or compatibility fixes for future versions of Go ⚠️**
 
 A Go module that analyzes and classifies different kinds of referrer URLs (search, social, ...).
 

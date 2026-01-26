@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 // ResolveFS accepts a single input argument of any type
@@ -134,7 +135,11 @@ var ResolveHTTPFS = func(fsOrDir interface{}) http.FileSystem {
 // FindNames accepts a "http.FileSystem" and a root name and returns
 // the list containing its file names.
 func FindNames(fileSystem http.FileSystem, name string) ([]string, error) {
-	f, err := fileSystem.Open(name)
+	if strings.Contains(name, "..") {
+		return nil, fmt.Errorf("invalid root name")
+	}
+
+	f, err := fileSystem.Open(name) // it's the root dir.
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +165,8 @@ func FindNames(fileSystem http.FileSystem, name string) ([]string, error) {
 		// Note:
 		// go-bindata has absolute names with os.Separator,
 		// http.Dir the basename.
-		filename := toBaseName(info.Name())
-		fullname := path.Join(name, filename)
+		baseFilename := toBaseName(info.Name())
+		fullname := path.Join(name, baseFilename)
 		if fullname == name { // prevent looping through itself.
 			continue
 		}

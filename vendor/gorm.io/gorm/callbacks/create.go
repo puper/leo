@@ -53,9 +53,13 @@ func Create(config *Config) func(db *gorm.DB) {
 				if _, ok := db.Statement.Clauses["RETURNING"]; !ok {
 					fromColumns := make([]clause.Column, 0, len(db.Statement.Schema.FieldsWithDefaultDBValue))
 					for _, field := range db.Statement.Schema.FieldsWithDefaultDBValue {
-						fromColumns = append(fromColumns, clause.Column{Name: field.DBName})
+						if field.Readable {
+							fromColumns = append(fromColumns, clause.Column{Name: field.DBName})
+						}
 					}
-					db.Statement.AddClause(clause.Returning{Columns: fromColumns})
+					if len(fromColumns) > 0 {
+						db.Statement.AddClause(clause.Returning{Columns: fromColumns})
+					}
 				}
 			}
 		}
@@ -76,8 +80,11 @@ func Create(config *Config) func(db *gorm.DB) {
 		ok, mode := hasReturning(db, supportReturning)
 		if ok {
 			if c, ok := db.Statement.Clauses["ON CONFLICT"]; ok {
-				if onConflict, _ := c.Expression.(clause.OnConflict); onConflict.DoNothing {
+				onConflict, _ := c.Expression.(clause.OnConflict)
+				if onConflict.DoNothing {
 					mode |= gorm.ScanOnConflictDoNothing
+				} else if len(onConflict.DoUpdates) > 0 || onConflict.UpdateAll {
+					mode |= gorm.ScanUpdate
 				}
 			}
 
@@ -89,6 +96,10 @@ func Create(config *Config) func(db *gorm.DB) {
 					db.AddError(rows.Close())
 				}()
 				gorm.Scan(rows, db, mode)
+
+				if db.Statement.Result != nil {
+					db.Statement.Result.RowsAffected = db.RowsAffected
+				}
 			}
 
 			return
@@ -103,6 +114,12 @@ func Create(config *Config) func(db *gorm.DB) {
 		}
 
 		db.RowsAffected, _ = result.RowsAffected()
+
+		if db.Statement.Result != nil {
+			db.Statement.Result.Result = result
+			db.Statement.Result.RowsAffected = db.RowsAffected
+		}
+
 		if db.RowsAffected == 0 {
 			return
 		}
@@ -112,6 +129,16 @@ func Create(config *Config) func(db *gorm.DB) {
 			pkFieldName = "@id"
 		)
 
+		if db.Statement.Schema != nil {
+			if db.Statement.Schema.PrioritizedPrimaryField == nil ||
+				!db.Statement.Schema.PrioritizedPrimaryField.HasDefaultValue ||
+				!db.Statement.Schema.PrioritizedPrimaryField.Readable {
+				return
+			}
+			pkField = db.Statement.Schema.PrioritizedPrimaryField
+			pkFieldName = db.Statement.Schema.PrioritizedPrimaryField.DBName
+		}
+
 		insertID, err := result.LastInsertId()
 		insertOk := err == nil && insertID > 0
 
@@ -120,14 +147,6 @@ func Create(config *Config) func(db *gorm.DB) {
 				db.AddError(err)
 			}
 			return
-		}
-
-		if db.Statement.Schema != nil {
-			if db.Statement.Schema.PrioritizedPrimaryField == nil || !db.Statement.Schema.PrioritizedPrimaryField.HasDefaultValue {
-				return
-			}
-			pkField = db.Statement.Schema.PrioritizedPrimaryField
-			pkFieldName = db.Statement.Schema.PrioritizedPrimaryField.DBName
 		}
 
 		// append @id column with value for auto-increment primary key
@@ -307,7 +326,7 @@ func ConvertToCreateValues(stmt *gorm.Statement) (values clause.Values) {
 					values.Columns = append(values.Columns, clause.Column{Name: field.DBName})
 					for idx := range values.Values {
 						if vs[idx] == nil {
-							values.Values[idx] = append(values.Values[idx], stmt.Dialector.DefaultValueOf(field))
+							values.Values[idx] = append(values.Values[idx], stmt.DefaultValueOf(field))
 						} else {
 							values.Values[idx] = append(values.Values[idx], vs[idx])
 						}
@@ -333,7 +352,7 @@ func ConvertToCreateValues(stmt *gorm.Statement) (values clause.Values) {
 			}
 
 			for _, field := range stmt.Schema.FieldsWithDefaultDBValue {
-				if v, ok := selectColumns[field.DBName]; (ok && v) || (!ok && !restricted) {
+				if v, ok := selectColumns[field.DBName]; (ok && v) || (!ok && !restricted) && field.DefaultValueInterface == nil {
 					if rvOfvalue, isZero := field.ValueOf(stmt.Context, stmt.ReflectValue); !isZero {
 						values.Columns = append(values.Columns, clause.Column{Name: field.DBName})
 						values.Values[0] = append(values.Values[0], rvOfvalue)

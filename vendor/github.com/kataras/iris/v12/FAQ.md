@@ -32,7 +32,7 @@ More than 280 practical examples, tutorials and articles at:
 - https://www.iris-go.com/#ebookDonateForm
 <!-- - https://github.com/kataras/iris/wiki/Starter-kits -->
 - https://github.com/kataras/iris/tree/main/_examples
-- https://pkg.go.dev/github.com/kataras/iris/v12@main
+- https://pkg.go.dev/github.com/kataras/iris/v12@v12.2.11
 
 ## Active development mode
 

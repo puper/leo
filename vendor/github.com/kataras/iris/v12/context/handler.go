@@ -12,7 +12,7 @@ import (
 
 var (
 	// PackageName is the Iris Go module package name.
-	PackageName = strings.TrimSuffix(reflect.TypeOf(Handlers{}).PkgPath(), "/context")
+	PackageName = strings.TrimSuffix(reflect.TypeOf(Context{}).PkgPath(), "/context")
 
 	// WorkingDir is the (initial) current directory.
 	WorkingDir, _ = os.Getwd()
@@ -38,6 +38,7 @@ var (
 		"iris.logger",
 		"iris.rate",
 		"iris.methodoverride",
+		"iris.errors.recover",
 	}
 )
 
@@ -63,8 +64,9 @@ func SetHandlerName(original string, replacement string) {
 	// e.g. `iris/cache/client.(*Handler).ServeHTTP-fm`
 	regex, _ := regexp.Compile(original)
 	handlerNames[&NameExpr{
-		literal: original,
-		regex:   regex,
+		literal:           original,
+		normalizedLiteral: normalizeExpression(original),
+		regex:             regex,
 	}] = replacement
 
 	handlerNamesMu.Unlock()
@@ -72,8 +74,9 @@ func SetHandlerName(original string, replacement string) {
 
 // NameExpr regex or literal comparison through `MatchString`.
 type NameExpr struct {
-	regex   *regexp.Regexp
-	literal string
+	regex             *regexp.Regexp
+	literal           string
+	normalizedLiteral string
 }
 
 // MatchString reports whether "s" is literal of "literal"
@@ -90,6 +93,23 @@ func (expr *NameExpr) MatchString(s string) bool {
 	return false
 }
 
+// MatchFilename reports whether "filename" contains the "literal".
+func (expr *NameExpr) MatchFilename(filename string) bool {
+	if filename == "" {
+		return false
+	}
+
+	return strings.Contains(filename, expr.normalizedLiteral)
+}
+
+// The regular expression to match the versioning and the domain part
+var trimFileModuleNameRegex = regexp.MustCompile(`^[\w.]+/(kataras|iris-contrib)/|/v\d+|\.\*`)
+
+func normalizeExpression(str string) string {
+	// Replace all occurrences of the regular expression with the replacement string.
+	return strings.ToLower(trimFileModuleNameRegex.ReplaceAllString(str, ""))
+}
+
 // A Handler responds to an HTTP request.
 // It writes reply headers and data to the Context.ResponseWriter() and then return.
 // Returning signals that the request is finished;
@@ -104,12 +124,12 @@ func (expr *NameExpr) MatchString(s string) bool {
 //
 // If Handler panics, the server (the caller of Handler) assumes that the effect of the panic was isolated to the active request.
 // It recovers the panic, logs a stack trace to the server error log, and hangs up the connection.
-type Handler func(*Context)
+type Handler = func(*Context)
 
 // Handlers is just a type of slice of []Handler.
 //
 // See `Handler` for more.
-type Handlers []Handler
+type Handlers = []Handler
 
 func valueOf(v interface{}) reflect.Value {
 	if val, ok := v.(reflect.Value); ok {
@@ -124,11 +144,14 @@ func valueOf(v interface{}) reflect.Value {
 // See `SetHandlerName` too.
 func HandlerName(h interface{}) string {
 	pc := valueOf(h).Pointer()
-	name := runtime.FuncForPC(pc).Name()
+	fn := runtime.FuncForPC(pc)
+	name := fn.Name()
+	filename, _ := fn.FileLine(fn.Entry())
+	filenameLower := strings.ToLower(filename)
 
 	handlerNamesMu.RLock()
 	for expr, newName := range handlerNames {
-		if expr.MatchString(name) {
+		if expr.MatchString(name) || expr.MatchFilename(filenameLower) {
 			name = newName
 			break
 		}
@@ -363,4 +386,51 @@ reg:
 	}
 
 	return h1
+}
+
+// CopyHandlers returns a copy of "handlers" Handlers slice.
+func CopyHandlers(handlers Handlers) Handlers {
+	handlersCp := make(Handlers, 0, len(handlers))
+	for _, handler := range handlers {
+		if handler == nil {
+			continue
+		}
+
+		handlersCp = append(handlersCp, handler)
+	}
+
+	return handlersCp
+}
+
+// HandlerExists reports whether a handler exists in the "handlers" slice.
+func HandlerExists(handlers Handlers, handlerNameOrFunc any) bool {
+	if handlerNameOrFunc == nil {
+		return false
+	}
+
+	var matchHandler func(any) bool
+
+	switch v := handlerNameOrFunc.(type) {
+	case string:
+		matchHandler = func(handler any) bool {
+			return HandlerName(handler) == v
+		}
+	case Handler:
+		handlerName := HandlerName(v)
+		matchHandler = func(handler any) bool {
+			return HandlerName(handler) == handlerName
+		}
+	default:
+		matchHandler = func(handler any) bool {
+			return reflect.TypeOf(handler) == reflect.TypeOf(v)
+		}
+	}
+
+	for _, handler := range handlers {
+		if matchHandler(handler) {
+			return true
+		}
+	}
+
+	return false
 }

@@ -14,14 +14,15 @@ import (
 )
 
 var (
-	voidBytes     = []byte("/>")
-	isBytes       = []byte("=")
-	spaceBytes    = []byte(" ")
-	cdataEndBytes = []byte("]]>")
-	zeroBytes     = []byte("0")
-	cssMimeBytes  = []byte("text/css")
-	noneBytes     = []byte("none")
-	urlBytes      = []byte("url(")
+	voidBytes        = []byte("/>")
+	isBytes          = []byte("=")
+	spaceBytes       = []byte(" ")
+	cdataEndBytes    = []byte("]]>")
+	zeroBytes        = []byte("0")
+	svgStartTagBytes = []byte("<svg")
+	cssMimeBytes     = []byte("text/css")
+	noneBytes        = []byte("none")
+	urlBytes         = []byte("url(")
 )
 
 ////////////////////////////////////////////////////////////////
@@ -31,6 +32,7 @@ type Minifier struct {
 	KeepComments bool
 	Precision    int // number of significant digits
 	newPrecision int // precision for new numbers
+	inline       bool
 }
 
 // Minify minifies SVG data, it reads from r and writes to w.
@@ -39,11 +41,21 @@ func Minify(m *minify.M, w io.Writer, r io.Reader, params map[string]string) err
 }
 
 // Minify minifies SVG data, it reads from r and writes to w.
-func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, _ map[string]string) error {
+func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, params map[string]string) error {
+	tmp := &Minifier{}
+	*tmp = *o
+	o = tmp
+
 	o.newPrecision = o.Precision
 	if o.newPrecision <= 0 || 15 < o.newPrecision {
 		o.newPrecision = 15 // minimum number of digits a double can represent exactly
 	}
+	if !o.inline {
+		o.inline = params != nil && params["inline"] == "1"
+	}
+
+	// namespaces to keep
+	namespaces := []Hash{Xlink}
 
 	var tag Hash
 	defaultStyleType := cssMimeBytes
@@ -121,6 +133,26 @@ func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, _ map[string]st
 			tag = t.Hash
 			if tag == Metadata {
 				t.Data = nil
+			} else if colon := bytes.IndexByte(t.Text, ':'); colon != -1 {
+				prefix := ToHash(t.Text[:colon])
+				if prefix == Svg {
+					t.Data = append(t.Data[:1], t.Data[5:]...)
+				} else {
+					// skip attributes in namespace (eg. inkscape or sodipodi)
+					keep := false
+					for _, ns := range namespaces {
+						if prefix == ns {
+							keep = true
+							break
+						}
+					}
+					if !keep {
+						t.Data = nil
+					}
+				}
+			} else if tag == Defs && tb.Peek(1).TokenType == xml.StartTagCloseVoidToken {
+				// skip empty tags
+				t.Data = nil
 			}
 
 			if t.Data == nil {
@@ -139,7 +171,8 @@ func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, _ map[string]st
 				val, _ = o.shortenDimension(val)
 			}
 			if attr == Xml_Space && bytes.Equal(val, []byte("preserve")) ||
-				tag == Svg && (attr == Version && bytes.Equal(val, []byte("1.1")) ||
+				tag == Svg && (o.inline && attr == Xmlns ||
+					attr == Version && bytes.Equal(val, []byte("1.1")) ||
 					attr == X && bytes.Equal(val, zeroBytes) ||
 					attr == Y && bytes.Equal(val, zeroBytes) ||
 					attr == PreserveAspectRatio && bytes.Equal(val, []byte("xMidYMid meet")) ||
@@ -148,6 +181,21 @@ func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, _ map[string]st
 					attr == ContentStyleType && bytes.Equal(val, cssMimeBytes)) ||
 				tag == Style && attr == Type && bytes.Equal(val, cssMimeBytes) {
 				continue
+			}
+
+			// skip attributes in namespace (eg. inkscape or sodipodi)
+			if colon := bytes.IndexByte(t.Text, ':'); colon != -1 {
+				keep := false
+				prefix, name := ToHash(t.Text[:colon]), ToHash(t.Text[colon+1:])
+				for _, ns := range namespaces {
+					if prefix == ns || tag == Svg && prefix == Xmlns && name == ns {
+						keep = true
+						break
+					}
+				}
+				if !keep {
+					continue
+				}
 			}
 
 			w.Write(spaceBytes)
@@ -188,7 +236,7 @@ func (o *Minifier) Minify(m *minify.M, w io.Writer, r io.Reader, _ map[string]st
 				}
 				val = newVal
 			} else if colorAttrMap[attr] && len(val) > 0 && (len(val) < 5 || !parse.EqualFold(val[:4], urlBytes)) {
-				parse.ToLower(val)
+				//parse.ToLower(val)
 				if val[0] == '#' {
 					if name, ok := css.ShortenColorHex[string(val)]; ok {
 						val = name
