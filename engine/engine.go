@@ -20,17 +20,16 @@ type Closer interface {
 
 func New(config *Config) *Engine {
 	return &Engine{
-		builders:  map[string]Builder{},
-		instances: map[string]any{},
-		config:    config,
-		graph:     newGraph(),
+		builders: map[string]Builder{},
+		config:   config,
+		graph:    newGraph(),
 	}
 }
 
 type Engine struct {
 	mutex     sync.RWMutex
 	builders  map[string]Builder
-	instances map[string]any
+	instances sync.Map
 	config    *Config
 	graph     *graph
 }
@@ -59,9 +58,11 @@ func (me *Engine) Build() error {
 		if builder, ok := me.builders[name]; ok {
 			var err error
 			fmt.Printf("build component `%v` start\n", name)
-			if me.instances[name], err = builder(); err != nil {
+			instance, err := builder()
+			if err != nil {
 				return err
 			}
+			me.instances.Store(name, instance)
 			fmt.Printf("build component `%v` end\n", name)
 		}
 	}
@@ -82,9 +83,10 @@ func (me *Engine) close() error {
 	}
 	for i := len(names) - 1; i >= 0; i-- {
 		name := names[i]
-		if instance, ok := me.instances[name]; ok {
+		instance, ok := me.instances.Load(name)
+		if ok {
 			fmt.Printf("close component `%v`\n", name)
-			delete(me.instances, name)
+			me.instances.Delete(name)
 			if closer, ok := instance.(Closer); ok {
 				closer.Close()
 			}
@@ -98,7 +100,7 @@ func (me *Engine) GetConfig() *Config {
 }
 
 func (me *Engine) Get(name string) any {
-	if instance, ok := me.instances[name]; ok {
+	if instance, ok := me.instances.Load(name); ok {
 		return instance
 	}
 	panic(fmt.Sprintf("engine: component `%v` not found", name))
