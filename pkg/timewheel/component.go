@@ -6,8 +6,13 @@ import (
 )
 
 var (
-	tw   *TimeWheel
-	once sync.Once
+	tw          *TimeWheel
+	once        sync.Once
+	requestPool = sync.Pool{
+		New: func() any {
+			return &request{}
+		},
+	}
 )
 
 func Default() *TimeWheel {
@@ -99,9 +104,7 @@ func (me *TimeWheel) Add(job *Job) {
 	select {
 	case <-me.closed:
 		return
-	case me.reqs <- &request{
-		job: job,
-	}:
+	case me.reqs <- getRequest(0, job):
 	}
 }
 
@@ -109,13 +112,7 @@ func (me *TimeWheel) Delete(key, id string) {
 	select {
 	case <-me.closed:
 		return
-	case me.reqs <- &request{
-		action: 1,
-		job: &Job{
-			Id:  id,
-			Key: key,
-		},
-	}:
+	case me.reqs <- getRequest(1, &Job{Id: id, Key: key}):
 	}
 }
 
@@ -123,10 +120,15 @@ func (me *TimeWheel) Purge() {
 	select {
 	case <-me.closed:
 		return
-	case me.reqs <- &request{
-		action: 2,
-	}:
+	case me.reqs <- getRequest(2, nil):
 	}
+}
+
+func getRequest(action int, job *Job) *request {
+	req := requestPool.Get().(*request)
+	req.action = action
+	req.job = job
+	return req
 }
 
 func (me *TimeWheel) mainloop() {
@@ -180,6 +182,9 @@ LOOP:
 				me.jobsByTime = map[int64]map[string]*Job{}
 				me.jobsById = map[string]*Job{}
 			}
+			req.action = 0
+			req.job = nil
+			requestPool.Put(req)
 		case <-me.closed:
 			break LOOP
 
