@@ -20,7 +20,8 @@ func Default() *MutexManager {
 
 type Mutex struct {
 	sync.RWMutex
-	locks int64
+	locks  int64
+	rlocks int64
 }
 
 func New() *MutexManager {
@@ -58,5 +59,31 @@ func (me *MutexManager) Unlock(key string) {
 	} else {
 		me.mutex.Unlock()
 		panic("unlock of unlocked mutex")
+	}
+}
+
+func (me *MutexManager) RLock(key string) {
+	me.mutex.Lock()
+	if _, ok := me.mutexes[key]; !ok {
+		me.mutexes[key] = &Mutex{}
+	}
+	me.mutexes[key].rlocks++
+	m := me.mutexes[key]
+	me.mutex.Unlock()
+	m.RLock()
+}
+
+func (me *MutexManager) RUnlock(key string) {
+	me.mutex.Lock()
+	if _, ok := me.mutexes[key]; ok {
+		me.mutexes[key].RUnlock()
+		me.mutexes[key].rlocks--
+		if me.mutexes[key].locks == 0 && me.mutexes[key].rlocks == 0 {
+			delete(me.mutexes, key)
+		}
+		me.mutex.Unlock()
+	} else {
+		me.mutex.Unlock()
+		panic("r_unlock of unlocked mutex")
 	}
 }
