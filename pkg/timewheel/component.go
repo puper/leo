@@ -40,7 +40,6 @@ func New(reqLen, dispatchLen int) *TimeWheel {
 		closed:         make(chan struct{}),
 		dispatchClosed: make(chan struct{}),
 		done:           make(chan struct{}),
-		callbacks:      map[string]Callback{},
 	}
 	go me.mainloop()
 	go me.dispatch()
@@ -58,7 +57,7 @@ type TimeWheel struct {
 	dispatchClosed chan struct{}
 	done           chan struct{}
 	mutex          sync.RWMutex
-	callbacks      map[string]Callback
+	callbacks      sync.Map
 }
 
 func (me *TimeWheel) Close() {
@@ -67,15 +66,11 @@ func (me *TimeWheel) Close() {
 }
 
 func (me *TimeWheel) Sub(key string, f Callback) {
-	me.mutex.Lock()
-	defer me.mutex.Unlock()
-	me.callbacks[key] = f
+	me.callbacks.Store(key, f)
 }
 
 func (me *TimeWheel) Unsub(key string) {
-	me.mutex.Lock()
-	defer me.mutex.Unlock()
-	delete(me.callbacks, key)
+	me.callbacks.Delete(key)
 }
 
 func (me *TimeWheel) dispatch() {

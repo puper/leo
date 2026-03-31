@@ -13,16 +13,17 @@ git_commit_at_plan: "d4e0bb52"
 ## Goal
 
 优化 mutexmanager 组件，提升并发性能并增加功能：
-- 修复并发安全隐患
 - 添加读锁（RLock）支持
-- 提升高并发场景性能
 - 增加 TryLock 能力
+- 增加 LockTimeout 能力
+
+**注意**：经分析，原实现对遵循使用规范（Lock/Unlock 配对）的客户端是并发安全的，T001 修复任务取消。
 
 ## Scope & Assumptions
 
-- IN scope: mutexmanager 组件优化
+- IN scope: mutexmanager 组件功能增强
 - OUT of scope: 其他组件修改、benchmark 测试、性能对比
-- Assumptions: 使用 Go 1.21+，sync.Map 已稳定
+- Assumptions: 使用 Go 1.21+，sync.RWMutex 已稳定
 
 ## Deliverables
 
@@ -36,24 +37,24 @@ git_commit_at_plan: "d4e0bb52"
 
 ## Milestones
 
-- M1: 修复并发安全隐患，重构锁逻辑
-- M2: 添加 RLock/RUnlock 读写锁支持
-- M3: 添加 TryLock 和 LockTimeout 功能
+- M1: 添加 RLock/RUnlock 读写锁支持
+- M2: 添加 TryLock 和 TryRLock 功能
+- M3: 添加 LockTimeout 和 RLockTimeout 功能
 - M4: 编写单元测试验证
 
 ## Work Breakdown (Tasks)
 
-### T001: 修复 Lock/Unlock 并发安全隐患
+### T001: 添加 RLock/RUnlock 支持
 
-**Summary**: 重构 Lock/Unlock 方法，消除锁释放后的竞态窗口
+**Summary**: 为 MutexManager 添加读锁支持，提升读多写少场景性能
 
 **Changes**:
-1. 修改 `Lock()` 方法：在持有 `me.mutex` 期间完成目标 mutex 的获取
-2. 修改 `Unlock()` 方法：使用原子操作或额外标记确保安全
-3. 添加 `locks` 溢出的防御性检查
+1. 添加 `RLock(key string)` 方法
+2. 添加 `RUnlock(key string)` 方法
+3. 修改内部 Mutex 结构使用 RWMutex
 
-**Acceptance**: 多个 goroutine 并发 Lock/Unlock 同一 key 不会导致 panic 或死锁
-**Evidence Contract**: `go test -race ./pkg/mutexmanager/...`
+**Acceptance**: RLock 允许多个并发读，WriteLock 独占
+**Evidence Contract**: `go test -v -run TestRLock ./pkg/mutexmanager/...`
 **Files**: pkg/mutexmanager/component.go
 **Milestone**: M1
 **Estimate**: 1 小时
@@ -61,25 +62,7 @@ git_commit_at_plan: "d4e0bb52"
 
 ---
 
-### T002: 添加 RLock/RUnlock 支持
-
-**Summary**: 为 MutexManager 添加读锁支持，提升读多写少场景性能
-
-**Changes**:
-1. 添加 `RLock(key string)` 方法
-2. 添加 `RUnlock(key string)` 方法
-3. 使用 `sync.RWMutex` 替代 `sync.Mutex` 作为内部锁
-
-**Acceptance**: RLock 允许多个并发读，WriteLock 独占
-**Evidence Contract**: `go test -v -run TestRLock ./pkg/mutexmanager/...`
-**Files**: pkg/mutexmanager/component.go
-**Milestone**: M2
-**Estimate**: 1 小时
-**Dependencies**: T001
-
----
-
-### T003: 添加 TryLock 功能
+### T002: 添加 TryLock 功能
 
 **Summary**: 实现非阻塞获取锁的能力
 
@@ -90,13 +73,13 @@ git_commit_at_plan: "d4e0bb52"
 **Acceptance**: TryLock 在锁不可用时立即返回 false，不阻塞
 **Evidence Contract**: `go test -v -run TestTryLock ./pkg/mutexmanager/...`
 **Files**: pkg/mutexmanager/component.go
-**Milestone**: M3
+**Milestone**: M2
 **Estimate**: 30 分钟
-**Dependencies**: T002
+**Dependencies**: T001
 
 ---
 
-### T004: 添加 LockTimeout 功能
+### T003: 添加 LockTimeout 功能
 
 **Summary**: 实现带超时机制的锁获取
 
@@ -109,11 +92,11 @@ git_commit_at_plan: "d4e0bb52"
 **Files**: pkg/mutexmanager/component.go
 **Milestone**: M3
 **Estimate**: 30 分钟
-**Dependencies**: T003
+**Dependencies**: T002
 
 ---
 
-### T005: 编写单元测试
+### T004: 编写单元测试
 
 **Summary**: 编写完整的单元测试覆盖所有功能
 
@@ -129,16 +112,16 @@ git_commit_at_plan: "d4e0bb52"
 **Files**: pkg/mutexmanager/component_test.go (新建)
 **Milestone**: M4
 **Estimate**: 2 小时
-**Dependencies**: T004
+**Dependencies**: T003
 
 ---
 
 ## Risks & Mitigations
 
-- **风险**: 重构可能引入新的并发问题
-  - **缓解**: 每次重构后运行 `go test -race`
-- **风险**: sync.RWMutex 在读多写少时可能优于 sync.Map 分段锁
-  - **缓解**: 保持当前 map 结构，仅在 mutex 层面使用 RWMutex
+- **风险**: 添加 RLock 后需要确保 Lock/Unlock 与 RLock/RUnlock 互斥
+  - **缓解**: 使用 RWMutex 的写锁保护 Lock，写锁与读锁互斥
+- **风险**: 测试用例可能遗漏边界条件
+  - **缓解**: 使用 `-race` 标志运行测试
 
 ## Test Strategy
 
@@ -151,7 +134,6 @@ git_commit_at_plan: "d4e0bb52"
 
 - 当前实现: `pkg/mutexmanager/component.go:1-62`
 - Go sync.RWMutex 文档: https://pkg.go.dev/sync#RWMutex
-- Go sync.Map 文档: https://pkg.go.dev/sync#Map
 
 ## Final Gate
 
