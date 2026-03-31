@@ -56,7 +56,6 @@ type TimeWheel struct {
 	closed         chan struct{}
 	dispatchClosed chan struct{}
 	done           chan struct{}
-	mutex          sync.RWMutex
 	callbacks      sync.Map
 }
 
@@ -77,21 +76,15 @@ func (me *TimeWheel) dispatch() {
 	for {
 		select {
 		case job := <-me.dispatchJobs:
-			me.mutex.RLock()
-			f, ok := me.callbacks[job.Key]
-			me.mutex.RUnlock()
-			if ok {
-				f(job)
+			if f, ok := me.callbacks.Load(job.Key); ok {
+				f.(Callback)(job)
 			}
 		case <-me.dispatchClosed:
 			for {
 				select {
 				case job := <-me.dispatchJobs:
-					me.mutex.RLock()
-					f, ok := me.callbacks[job.Key]
-					me.mutex.RUnlock()
-					if ok {
-						f(job)
+					if f, ok := me.callbacks.Load(job.Key); ok {
+						f.(Callback)(job)
 					}
 				default:
 					close(me.done)
