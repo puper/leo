@@ -128,8 +128,11 @@ func (me *V1QueryApi) QueryRecords(db string, query string, reply any) error {
 			}
 		}
 	}
-	b, _ = json.Marshal(records)
-	if err := json.Unmarshal(b, &reply); err != nil {
+	b, err = json.Marshal(records)
+	if err != nil {
+		return errors.WithMessage(err, "json.Marshal")
+	}
+	if err := json.Unmarshal(b, reply); err != nil {
 		return errors.WithMessage(err, "json.Unmarshal")
 	}
 	return nil

@@ -17,8 +17,14 @@ func (me *Web) GetApp() *iris.Application {
 }
 
 func (me *Web) Close() error {
-	if me.config.ShutdownTimeout > 0 {
-		return me.app.Shutdown(context.Background())
+	if me == nil || me.app == nil {
+		return nil
 	}
-	return me.app.Shutdown(context.Background())
+	ctx := context.Background()
+	if me.config != nil && me.config.ShutdownTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, me.config.ShutdownTimeout)
+		defer cancel()
+	}
+	return me.app.Shutdown(ctx)
 }

@@ -54,13 +54,18 @@ func (me *Engine) Build() error {
 		return err
 	}
 	for _, name := range names {
-		if builder, ok := me.builders[name]; ok {
-			instance, err := builder()
-			if err != nil {
-				return err
-			}
-			me.instances.Store(name, instance)
+		builder, ok := me.builders[name]
+		if !ok {
+			return fmt.Errorf("engine: builder `%s` not registered", name)
 		}
+		if builder == nil {
+			return fmt.Errorf("engine: builder `%s` is nil", name)
+		}
+		instance, err := builder()
+		if err != nil {
+			return err
+		}
+		me.instances.Store(name, instance)
 	}
 	return nil
 }

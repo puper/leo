@@ -1,7 +1,10 @@
 package web
 
 import (
+	stderrors "errors"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/kataras/iris/v12"
 	"github.com/pkg/errors"
@@ -26,15 +29,31 @@ func Builder(cfg *config.Config, configurers ...func(*Web) error) engine.Builder
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}
+		lis, err := net.Listen("tcp", cfg.Addr)
+		if err != nil {
+			return nil, errors.WithMessage(err, "net.Listen")
+		}
 
-		go web.app.Run(
-			iris.Server(s),
-			iris.WithoutServerError(
-				iris.ErrServerClosed,
-			),
-			iris.WithoutPathCorrection,
-			iris.WithOptimizations,
-		)
+		runErrCh := make(chan error, 1)
+		go func() {
+			err := web.app.Run(
+				iris.Listener(lis),
+				iris.Server(s),
+				iris.WithoutPathCorrection,
+				iris.WithOptimizations,
+			)
+			if err != nil && !stderrors.Is(err, iris.ErrServerClosed) {
+				runErrCh <- err
+			}
+			close(runErrCh)
+		}()
+		select {
+		case err := <-runErrCh:
+			if err != nil {
+				return nil, errors.WithMessage(err, "app.Run")
+			}
+		case <-time.After(50 * time.Millisecond):
+		}
 		return web, nil
 	}
 }

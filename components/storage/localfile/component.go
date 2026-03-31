@@ -200,12 +200,19 @@ func (me *Component) GetFileData(name string) ([]byte, error) {
 }
 
 func (me *Component) GetFullName(name string) (string, error) {
-	name = filepath.Join(me.config.RootDir, name)
-	absName, err := filepath.Abs(name)
+	rootDir, err := filepath.Abs(filepath.Clean(me.config.RootDir))
 	if err != nil {
 		return "", err
 	}
-	if !strings.HasPrefix(absName, name) {
+	absName, err := filepath.Abs(filepath.Join(rootDir, name))
+	if err != nil {
+		return "", err
+	}
+	rootPrefix := rootDir
+	if !strings.HasSuffix(rootPrefix, string(os.PathSeparator)) {
+		rootPrefix += string(os.PathSeparator)
+	}
+	if absName != rootDir && !strings.HasPrefix(absName, rootPrefix) {
 		return "", fmt.Errorf("invalid path: %v", name)
 	}
 	return absName, nil

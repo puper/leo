@@ -1,7 +1,9 @@
 package db
 
 import (
+	stderrors "errors"
 	"embed"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -12,11 +14,14 @@ import (
 
 func LoadMigrates(migrateFs embed.FS) (map[string][]*Migration, error) {
 	migrates := map[string][]*Migration{}
-	fs, err := migrateFs.ReadDir("sqls")
+	entries, err := migrateFs.ReadDir("sqls")
 	if err != nil {
-		return migrates, nil
+		if stderrors.Is(err, fs.ErrNotExist) {
+			return migrates, nil
+		}
+		return nil, errors.WithMessage(err, "read dir sqls")
 	}
-	for _, f := range fs {
+	for _, f := range entries {
 		if strings.HasPrefix(f.Name(), ".") {
 			continue
 		}
@@ -52,6 +57,7 @@ func LoadMigrates(migrateFs embed.FS) (map[string][]*Migration, error) {
 				if err != nil {
 					return nil, errors.WithMessagef(err, "read file sqls/%s/%s", dbName, sqlf.Name())
 				}
+				sql := string(sqlBytes)
 				if _, ok := ms[id]; !ok {
 					ms[id] = &Migration{
 						ID: id,
@@ -59,11 +65,11 @@ func LoadMigrates(migrateFs embed.FS) (map[string][]*Migration, error) {
 				}
 				if isUp {
 					ms[id].Migrate = func(tx *gorm.DB) error {
-						return tx.Session(&gorm.Session{}).Exec(string(sqlBytes)).Error
+						return tx.Session(&gorm.Session{}).Exec(sql).Error
 					}
 				} else {
 					ms[id].Rollback = func(tx *gorm.DB) error {
-						return tx.Session(&gorm.Session{}).Exec(string(sqlBytes)).Error
+						return tx.Session(&gorm.Session{}).Exec(sql).Error
 					}
 				}
 			}

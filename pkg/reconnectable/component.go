@@ -49,6 +49,13 @@ func (me *Component) Start() error {
 func (me *Component) mainloop() {
 	defer me.wg.Done()
 	defer me.cancel()
+	if !me.inited {
+		me.inited = true
+		select {
+		case me.initCh <- nil:
+		default:
+		}
+	}
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
