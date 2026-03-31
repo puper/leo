@@ -61,11 +61,15 @@ type TimeWheel struct {
 	closed         chan struct{}
 	dispatchClosed chan struct{}
 	done           chan struct{}
+	closeOnce      sync.Once
 	callbacks      sync.Map
 }
 
 func (me *TimeWheel) Close() {
-	close(me.closed)
+	me.closeOnce.Do(func() {
+		close(me.closed)
+		close(me.dispatchClosed)
+	})
 	<-me.done
 }
 
