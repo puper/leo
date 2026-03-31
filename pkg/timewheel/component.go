@@ -33,12 +33,14 @@ type request struct {
 
 func New(reqLen, dispatchLen int) *TimeWheel {
 	me := &TimeWheel{
-		jobsByTime:   map[int64]map[string]*Job{},
-		jobsById:     map[string]*Job{},
-		reqs:         make(chan *request, reqLen),
-		dispatchJobs: make(chan *Job, dispatchLen),
-		closed:       make(chan struct{}),
-		callbacks:    map[string]Callback{},
+		jobsByTime:     map[int64]map[string]*Job{},
+		jobsById:       map[string]*Job{},
+		reqs:           make(chan *request, reqLen),
+		dispatchJobs:   make(chan *Job, dispatchLen),
+		closed:         make(chan struct{}),
+		dispatchClosed: make(chan struct{}),
+		done:           make(chan struct{}),
+		callbacks:      map[string]Callback{},
 	}
 	go me.mainloop()
 	go me.dispatch()
@@ -48,17 +50,20 @@ func New(reqLen, dispatchLen int) *TimeWheel {
 type Callback func(*Job)
 
 type TimeWheel struct {
-	jobsByTime   map[int64]map[string]*Job
-	jobsById     map[string]*Job
-	reqs         chan *request
-	dispatchJobs chan *Job
-	closed       chan struct{}
-	mutex        sync.RWMutex
-	callbacks    map[string]Callback
+	jobsByTime     map[int64]map[string]*Job
+	jobsById       map[string]*Job
+	reqs           chan *request
+	dispatchJobs   chan *Job
+	closed         chan struct{}
+	dispatchClosed chan struct{}
+	done           chan struct{}
+	mutex          sync.RWMutex
+	callbacks      map[string]Callback
 }
 
 func (me *TimeWheel) Close() {
 	close(me.closed)
+	<-me.done
 }
 
 func (me *TimeWheel) Sub(key string, f Callback) {
@@ -83,8 +88,21 @@ func (me *TimeWheel) dispatch() {
 			if ok {
 				f(job)
 			}
-		case <-me.closed:
-			return
+		case <-me.dispatchClosed:
+			for {
+				select {
+				case job := <-me.dispatchJobs:
+					me.mutex.RLock()
+					f, ok := me.callbacks[job.Key]
+					me.mutex.RUnlock()
+					if ok {
+						f(job)
+					}
+				default:
+					close(me.done)
+					return
+				}
+			}
 		}
 	}
 }
@@ -109,6 +127,16 @@ func (me *TimeWheel) Delete(key, id string) {
 			Id:  id,
 			Key: key,
 		},
+	}:
+	}
+}
+
+func (me *TimeWheel) Purge() {
+	select {
+	case <-me.closed:
+		return
+	case me.reqs <- &request{
+		action: 2,
 	}:
 	}
 }
@@ -155,11 +183,14 @@ LOOP:
 				if req.job.Time <= lastTime {
 					expiredJobTimes[req.job.Time] = struct{}{}
 				}
-			} else {
+			} else if req.action == 1 {
 				if job, ok := me.jobsById[mapKey]; ok {
 					delete(me.jobsById, mapKey)
 					delete(me.jobsByTime[job.Time], mapKey)
 				}
+			} else if req.action == 2 {
+				me.jobsByTime = map[int64]map[string]*Job{}
+				me.jobsById = map[string]*Job{}
 			}
 		case <-me.closed:
 			break LOOP
