@@ -157,7 +157,10 @@ func (me *Component) watch() error {
 	}
 	defer me.etcdCli.Lease.Revoke(context.TODO(), clientv3.LeaseID(grant.ID))
 	watcher := me.etcdCli.Watch(ctx, me.config.KeyPrefix, clientv3.WithPrefix())
-	reply, _ := me.etcdCli.Get(ctx, me.config.KeyPrefix, clientv3.WithPrefix())
+	reply, err := me.etcdCli.Get(ctx, me.config.KeyPrefix, clientv3.WithPrefix())
+	if err != nil {
+		return errors.WithMessage(err, "etcd.Get")
+	}
 	serverIds := make(map[int]bool, len(reply.Kvs))
 	for _, kv := range reply.Kvs {
 		id, err := me.parseKey(string(kv.Key))

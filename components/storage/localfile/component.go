@@ -163,7 +163,9 @@ func (me *Component) CreateFile(name string, fileData []byte, options ...storage
 		}
 	}
 	if opts.AutoCreateDir {
-		os.MkdirAll(filepath.Dir(name), 0755)
+		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+			return err
+		}
 	}
 	return os.WriteFile(name, fileData, 0644)
 }

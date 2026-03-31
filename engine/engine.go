@@ -49,21 +49,17 @@ func (me *Engine) Register(name string, builder Builder, dependencies ...string)
 func (me *Engine) Build() error {
 	me.mutex.Lock()
 	defer me.mutex.Unlock()
-	me.graph.TopologicalOrdering()
 	names, err := me.graph.TopologicalOrdering()
 	if err != nil {
 		return err
 	}
 	for _, name := range names {
 		if builder, ok := me.builders[name]; ok {
-			var err error
-			fmt.Printf("build component `%v` start\n", name)
 			instance, err := builder()
 			if err != nil {
 				return err
 			}
 			me.instances.Store(name, instance)
-			fmt.Printf("build component `%v` end\n", name)
 		}
 	}
 	return nil
@@ -76,21 +72,25 @@ func (me *Engine) Close() error {
 }
 
 func (me *Engine) close() error {
-	me.graph.TopologicalOrdering()
 	names, err := me.graph.TopologicalOrdering()
 	if err != nil {
 		return err
 	}
+	var closeErrors []error
 	for i := len(names) - 1; i >= 0; i-- {
 		name := names[i]
 		instance, ok := me.instances.Load(name)
 		if ok {
-			fmt.Printf("close component `%v`\n", name)
 			me.instances.Delete(name)
 			if closer, ok := instance.(Closer); ok {
-				closer.Close()
+				if err := closer.Close(); err != nil {
+					closeErrors = append(closeErrors, err)
+				}
 			}
 		}
+	}
+	if len(closeErrors) > 0 {
+		return closeErrors[0]
 	}
 	return nil
 }
@@ -110,14 +110,14 @@ func (me *Engine) Wait() error {
 	stop := make(chan struct{})
 	go func() {
 		sChan := make(chan os.Signal, 1)
+		signal.Notify(sChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 		for {
-			signal.Notify(sChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 			sig := <-sChan
 			switch sig {
 			case os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT:
 				stop <- struct{}{}
+				return
 			}
-
 		}
 	}()
 	<-stop

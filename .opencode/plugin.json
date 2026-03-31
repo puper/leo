@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "name": "harness-engineering",
+  "description": "Harness Engineering framework for OpenCode - skills, agents, and commands for safe, reviewable, incremental agent-driven development. Includes RPEQ workflow (Research, Plan, Execute, QA), ast-grep setup, and codebase analysis tools.",
+  "version": "0.1.0",
+  "repository": "https://github.com/alchemiststudiosDOTai/harness-engineering",
+  "license": "MIT"
+}
