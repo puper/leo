@@ -87,3 +87,25 @@ func (me *MutexManager) RUnlock(key string) {
 		panic("r_unlock of unlocked mutex")
 	}
 }
+
+func (me *MutexManager) TryLock(key string) bool {
+	me.mutex.Lock()
+	if _, ok := me.mutexes[key]; !ok {
+		me.mutexes[key] = &Mutex{}
+	}
+	me.mutexes[key].locks++
+	m := me.mutexes[key]
+	me.mutex.Unlock()
+	return m.TryLock()
+}
+
+func (me *MutexManager) TryRLock(key string) bool {
+	me.mutex.Lock()
+	if _, ok := me.mutexes[key]; !ok {
+		me.mutexes[key] = &Mutex{}
+	}
+	me.mutexes[key].rlocks++
+	m := me.mutexes[key]
+	me.mutex.Unlock()
+	return m.TryRLock()
+}
