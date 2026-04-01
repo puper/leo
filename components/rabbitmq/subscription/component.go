@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -20,9 +21,9 @@ func New(cfg *config.Config) *Subscription {
 		wg:     &sync.WaitGroup{},
 		inited: false,
 		initCh: make(chan error, 1),
-		msgCh:  make(chan *Message, 1),
+		msgCh:  make(chan *Message, 1024),
 
-		cache: gcache.New(0).Build(),
+		cache: gcache.New(10000).LRU().Build(),
 	}
 }
 
@@ -40,13 +41,46 @@ type Subscription struct {
 	cache gcache.Cache
 }
 
-type SubscriptionConfig struct {
-	Addr         string
-	ExchangeName string
-	QueueName    string
-
-	CloseTimeout   time.Duration
-	ReconnectDelay time.Duration
+func (me *Subscription) Declare(ch *amqp.Channel) error {
+	if me.config.ExchangeDeclare {
+		if err := ch.ExchangeDeclare(
+			me.config.ExchangeName,
+			me.config.ExchangeType,
+			true,
+			false,
+			false,
+			false,
+			nil,
+		); err != nil {
+			return fmt.Errorf("declare exchange: %w", err)
+		}
+	}
+	if me.config.QueueDeclare {
+		_, err := ch.QueueDeclare(
+			me.config.QueueName,
+			true,
+			false,
+			false,
+			false,
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("declare queue: %w", err)
+		}
+	}
+	if me.config.QueueBind {
+		err := ch.QueueBind(
+			me.config.QueueName,
+			me.config.RoutingKey,
+			me.config.ExchangeName,
+			false,
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("bind queue: %w", err)
+		}
+	}
+	return nil
 }
 
 func (me *Subscription) Start() error {
@@ -65,8 +99,15 @@ func (me *Subscription) Start() error {
 	}
 	me.wg.Add(1)
 	go me.mainloop()
-	return <-me.initCh
-
+	select {
+	case err := <-me.initCh:
+		return err
+	case <-me.ctx.Done():
+		return me.ctx.Err()
+	case <-time.After(me.config.CloseTimeout):
+		me.cancel()
+		return fmt.Errorf("start timeout after %v", me.config.CloseTimeout)
+	}
 }
 
 func (me *Subscription) MsgCh() <-chan *Message {
@@ -92,11 +133,11 @@ func (me *Subscription) ClearMsgs() {
 func (me *Subscription) mainloop() {
 	defer me.wg.Done()
 	defer me.cancel()
+	reconnectDelay := me.config.ReconnectDelay
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
 		go me.run(signalCh, doneCh)
-		// log error?
 		select {
 		case <-me.ctx.Done():
 			close(signalCh)
@@ -109,10 +150,19 @@ func (me *Subscription) mainloop() {
 			select {
 			case <-me.ctx.Done():
 				return
-			case <-time.After(me.config.ReconnectDelay):
+			case <-time.After(reconnectDelay):
 			}
+			reconnectDelay = me.nextReconnectDelay(reconnectDelay)
 		}
 	}
+}
+
+func (me *Subscription) nextReconnectDelay(currentDelay time.Duration) time.Duration {
+	nextDelay := currentDelay * 2
+	if nextDelay > time.Minute {
+		return time.Minute
+	}
+	return nextDelay
 }
 
 func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error {
@@ -135,10 +185,26 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 		return err
 	}
 	defer ch.Close()
+	if me.config.PrefetchCount > 0 || me.config.PrefetchSize > 0 {
+		if err := ch.Qos(me.config.PrefetchCount, me.config.PrefetchSize, false); err != nil {
+			if !me.inited {
+				me.initCh <- err
+			}
+			return fmt.Errorf("set qos: %w", err)
+		}
+	}
 	chClosedCh := make(chan *amqp.Error, 1)
 	ch.NotifyClose(chClosedCh)
 	chCancelCh := make(chan string, 1)
 	ch.NotifyCancel(chCancelCh)
+	if !me.inited {
+		if err := me.Declare(ch); err != nil {
+			if !me.inited {
+				me.initCh <- err
+			}
+			return err
+		}
+	}
 	deliveries, err := me.subscriptionCallback(ch, me.config, me.inited)
 	if err != nil {
 		if !me.inited {
@@ -168,7 +234,12 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 					cache:    me.cache,
 				}
 				if !msg.IsDuplicated() {
-					me.msgCh <- msg
+					select {
+					case me.msgCh <- msg:
+					default:
+						log.Printf("rabbitmq subscription: msgCh full, dropping message, delivery_tag=%d", msg.DeliveryTag)
+						msg.Ack(false)
+					}
 				} else {
 					msg.Ack(false)
 				}
@@ -196,10 +267,8 @@ func (me *Message) Ack(multiple bool) error {
 		return nil
 	}
 	if err := me.Delivery.Ack(multiple); err != nil {
-		me.cache.SetWithExpire(me.DeliveryTag, true, time.Hour)
 		return err
-	} else {
-		me.cache.Remove(me.DeliveryTag)
 	}
+	me.cache.SetWithExpire(me.DeliveryTag, true, time.Hour)
 	return nil
 }

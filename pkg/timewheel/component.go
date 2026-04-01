@@ -164,8 +164,8 @@ LOOP:
 				lastTime = now.Unix()
 			}
 		case req := <-me.reqs:
-			mapKey := req.job.Key + ":" + req.job.Id
 			if req.action == 0 {
+				mapKey := req.job.Key + ":" + req.job.Id
 				if job, ok := me.jobsById[mapKey]; ok {
 					delete(me.jobsByTime[job.Time], mapKey)
 				}
@@ -178,6 +178,7 @@ LOOP:
 					expiredJobTimes[req.job.Time] = struct{}{}
 				}
 			} else if req.action == 1 {
+				mapKey := req.job.Key + ":" + req.job.Id
 				if job, ok := me.jobsById[mapKey]; ok {
 					delete(me.jobsById, mapKey)
 					delete(me.jobsByTime[job.Time], mapKey)
