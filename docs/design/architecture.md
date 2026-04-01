@@ -58,7 +58,6 @@ func Builder(cfg *Config, configurers ...func(*Component) error) engine.Builder 
 │   └── zaplog/      # 日志
 └── pkg/             # 公共工具
     ├── mutexmanager
-    ├── reconnectable
     └── timewheel
 ```
 

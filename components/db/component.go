@@ -1,10 +1,11 @@
 package db
 
 import (
+	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/puper/leo/components/db/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -35,11 +36,11 @@ func New(cfg *config.Config) (*Db, error) {
 		w := new(Wrapper)
 		w.master, err = gorm.Open(mysql.Open(config.Master))
 		if err != nil {
-			return nil, errors.WithMessage(err, "gorm.Open")
+			return nil, fmt.Errorf("gorm.Open: %w", err)
 		}
 		stdDb, err := w.master.DB()
 		if err != nil {
-			return nil, errors.WithMessage(err, "master.DB")
+			return nil, fmt.Errorf("master.DB: %w", err)
 		}
 		stdDb.SetConnMaxLifetime(time.Duration(config.ConnMaxLifeTime) * time.Second)
 		stdDb.SetMaxIdleConns(config.MaxIdleConns)
@@ -51,7 +52,7 @@ func New(cfg *config.Config) (*Db, error) {
 			}
 			stdDb, err := slave.DB()
 			if err != nil {
-				return nil, errors.WithMessage(err, "slave.DB")
+				return nil, fmt.Errorf("slave.DB: %w", err)
 			}
 			stdDb.SetConnMaxLifetime(time.Duration(config.ConnMaxLifeTime) * time.Second)
 			stdDb.SetMaxIdleConns(config.MaxIdleConns)
@@ -103,7 +104,7 @@ func (me *Db) Close() error {
 		}
 	}
 	if len(errs) > 0 {
-		return errors.New("db close errors")
+		return errors.Join(errs...)
 	}
 	return nil
 }

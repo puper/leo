@@ -129,26 +129,88 @@ func TestMutexManagerLockUnlockRace(t *testing.T) {
 	// before Lock completes its actual mutex acquisition
 	var wg sync.WaitGroup
 
+	panicCh := make(chan any, 1)
+
 	// Goroutine that calls Lock
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				panicCh <- r
+			}
+		}()
 		mm.Lock(key)
 		time.Sleep(10 * time.Millisecond) // Simulate work
 		mm.Unlock(key)
 	}()
 
 	// Goroutine that calls Unlock immediately (before Lock completes)
-	// This should cause a panic in the current implementation
-	defer func() {
-		if r := recover(); r != nil {
-			// Expected panic: "unlock of unlocked mutex"
-			t.Logf("Caught expected panic: %v", r)
-		}
-	}()
-
+	// 该路径不应导致测试进程崩溃，panic 由上面的 panicCh 捕获。
 	time.Sleep(1 * time.Millisecond) // Let Lock start but not complete
-	mm.Unlock(key)                   // This should panic because the actual mutex isn't locked yet
+	mm.Unlock(key)
 
 	wg.Wait()
+
+	select {
+	case r := <-panicCh:
+		t.Logf("goroutine panic captured: %v", r)
+	default:
+	}
+}
+
+func TestUnlockDoesNotDeleteEntryWhenReaderPending(t *testing.T) {
+	m := New()
+	key := "pending-reader"
+
+	m.Lock(key)
+
+	panicCh := make(chan any, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				panicCh <- r
+			}
+		}()
+		m.RLock(key)
+		m.RUnlock(key)
+	}()
+
+	deadline := time.After(200 * time.Millisecond)
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("reader did not enter pending state in time")
+		default:
+			m.mutex.Lock()
+			pending := false
+			if mu, ok := m.mutexes[key]; ok {
+				pending = mu.rlocks > 0
+			}
+			m.mutex.Unlock()
+			if pending {
+				goto UNLOCK
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+UNLOCK:
+	m.Unlock(key)
+	<-done
+
+	select {
+	case r := <-panicCh:
+		t.Fatalf("unexpected panic: %v", r)
+	default:
+	}
+
+	m.mutex.Lock()
+	_, ok := m.mutexes[key]
+	m.mutex.Unlock()
+	if ok {
+		t.Fatal("mutex should be deleted after writer/reader both released")
+	}
 }

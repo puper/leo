@@ -12,6 +12,8 @@ import (
 	"github.com/puper/leo/engine"
 )
 
+const defaultStartCheckTimeout = 300 * time.Millisecond
+
 func Builder(cfg *config.Config, configurers ...func(*Web) error) engine.Builder {
 	return func() (any, error) {
 		s := &http.Server{
@@ -52,8 +54,15 @@ func Builder(cfg *config.Config, configurers ...func(*Web) error) engine.Builder
 			if err != nil {
 				return nil, errors.WithMessage(err, "app.Run")
 			}
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(getStartCheckTimeout(cfg)):
 		}
 		return web, nil
 	}
+}
+
+func getStartCheckTimeout(cfg *config.Config) time.Duration {
+	if cfg != nil && cfg.StartCheckTimeout > 0 {
+		return cfg.StartCheckTimeout
+	}
+	return defaultStartCheckTimeout
 }

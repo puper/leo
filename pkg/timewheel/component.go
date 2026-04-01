@@ -38,13 +38,13 @@ type request struct {
 
 func New(reqLen, dispatchLen int) *TimeWheel {
 	me := &TimeWheel{
-		jobsByTime:     map[int64]map[string]*Job{},
-		jobsById:       map[string]*Job{},
-		reqs:           make(chan *request, reqLen),
-		dispatchJobs:   make(chan *Job, dispatchLen),
-		closed:         make(chan struct{}),
-		dispatchClosed: make(chan struct{}),
-		done:           make(chan struct{}),
+		jobsByTime:   map[int64]map[string]*Job{},
+		jobsById:     map[string]*Job{},
+		reqs:         make(chan *request, reqLen),
+		dispatchJobs: make(chan *Job, dispatchLen),
+		closed:       make(chan struct{}),
+		mainloopDone: make(chan struct{}),
+		done:         make(chan struct{}),
 	}
 	go me.mainloop()
 	go me.dispatch()
@@ -54,22 +54,22 @@ func New(reqLen, dispatchLen int) *TimeWheel {
 type Callback func(*Job)
 
 type TimeWheel struct {
-	jobsByTime     map[int64]map[string]*Job
-	jobsById       map[string]*Job
-	reqs           chan *request
-	dispatchJobs   chan *Job
-	closed         chan struct{}
-	dispatchClosed chan struct{}
-	done           chan struct{}
-	closeOnce      sync.Once
-	callbacks      sync.Map
+	jobsByTime   map[int64]map[string]*Job
+	jobsById     map[string]*Job
+	reqs         chan *request
+	dispatchJobs chan *Job
+	closed       chan struct{}
+	mainloopDone chan struct{}
+	done         chan struct{}
+	closeOnce    sync.Once
+	callbacks    sync.Map
 }
 
 func (me *TimeWheel) Close() {
 	me.closeOnce.Do(func() {
 		close(me.closed)
-		close(me.dispatchClosed)
 	})
+	<-me.mainloopDone
 	<-me.done
 }
 
@@ -82,24 +82,10 @@ func (me *TimeWheel) Unsub(key string) {
 }
 
 func (me *TimeWheel) dispatch() {
-	for {
-		select {
-		case job := <-me.dispatchJobs:
-			if f, ok := me.callbacks.Load(job.Key); ok {
-				f.(Callback)(job)
-			}
-		case <-me.dispatchClosed:
-			for {
-				select {
-				case job := <-me.dispatchJobs:
-					if f, ok := me.callbacks.Load(job.Key); ok {
-						f.(Callback)(job)
-					}
-				default:
-					close(me.done)
-					return
-				}
-			}
+	defer close(me.done)
+	for job := range me.dispatchJobs {
+		if f, ok := me.callbacks.Load(job.Key); ok {
+			f.(Callback)(job)
 		}
 	}
 }
@@ -137,6 +123,11 @@ func getRequest(action int, job *Job) *request {
 
 func (me *TimeWheel) mainloop() {
 	tk := time.NewTicker(time.Millisecond * 600)
+	defer func() {
+		tk.Stop()
+		close(me.dispatchJobs)
+		close(me.mainloopDone)
+	}()
 	lastTime := time.Now().Unix()
 	expiredJobTimes := map[int64]struct{}{}
 LOOP:
@@ -195,5 +186,4 @@ LOOP:
 
 		}
 	}
-	tk.Stop()
 }

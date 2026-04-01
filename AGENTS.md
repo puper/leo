@@ -28,7 +28,6 @@ Leo 是一个 Go 语言微服务组件框架，提供依赖注入和组件生命
 │   └── zaplog/      # 日志组件
 └── pkg/             # 公共工具包
     ├── mutexmanager # 互斥锁管理器
-    ├── reconnectable # 可重连连接
     └── timewheel    # 时间轮定时器
 ```
 

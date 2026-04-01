@@ -20,4 +20,6 @@
 
 ## 关键变更日志
 
+- 2026-04-01: 退役 `pkg/reconnectable` 组件；`iris/web` 的 Builder 启动检查窗口调整为可配置并提高默认等待时长，降低启动误判概率。
+- 2026-04-01: 修复 `mutexmanager` 在写锁释放时误删仍有待读锁条目的问题；重构 `timewheel` 关闭握手，确保 `Close()` 等待 `mainloop` 与 `dispatch` 完整退出。
 - 2026-03-31: 启动一轮稳定性修复，覆盖 `reconnectable` 启动阻塞、`influxdb` 反序列化目标错误、`iris` 启停行为、`engine` 缺失依赖构建器检测、`localfile` 路径归属校验与 `db` 迁移加载健壮性。

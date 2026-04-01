@@ -194,3 +194,29 @@ func TestCloseIdempotent(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 }
+
+func TestCloseWaitsMainloopAndDispatch(t *testing.T) {
+	tw := New(1000, 1000)
+
+	for i := 0; i < 50; i++ {
+		tw.Add(&Job{
+			Key:  "test",
+			Id:   string(rune('a' + i%26)) + string(rune('A'+(i/26)%26)),
+			Time: time.Now().Unix(),
+		})
+	}
+
+	tw.Close()
+
+	select {
+	case <-tw.mainloopDone:
+	default:
+		t.Fatal("mainloop should have exited when Close returns")
+	}
+
+	select {
+	case <-tw.done:
+	default:
+		t.Fatal("dispatch should have exited when Close returns")
+	}
+}

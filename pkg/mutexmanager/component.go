@@ -52,7 +52,7 @@ func (me *MutexManager) Unlock(key string) {
 	if _, ok := me.mutexes[key]; ok {
 		me.mutexes[key].Unlock()
 		me.mutexes[key].locks--
-		if me.mutexes[key].locks == 0 {
+		if me.mutexes[key].locks == 0 && me.mutexes[key].rlocks == 0 {
 			delete(me.mutexes, key)
 		}
 		me.mutex.Unlock()
