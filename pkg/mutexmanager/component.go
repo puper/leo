@@ -95,8 +95,16 @@ func (me *MutexManager) TryLock(key string) bool {
 	}
 	me.mutexes[key].locks++
 	m := me.mutexes[key]
+	if !m.TryLock() {
+		me.mutexes[key].locks--
+		if me.mutexes[key].locks == 0 && me.mutexes[key].rlocks == 0 {
+			delete(me.mutexes, key)
+		}
+		me.mutex.Unlock()
+		return false
+	}
 	me.mutex.Unlock()
-	return m.TryLock()
+	return true
 }
 
 func (me *MutexManager) TryRLock(key string) bool {
@@ -106,6 +114,14 @@ func (me *MutexManager) TryRLock(key string) bool {
 	}
 	me.mutexes[key].rlocks++
 	m := me.mutexes[key]
+	if !m.TryRLock() {
+		me.mutexes[key].rlocks--
+		if me.mutexes[key].locks == 0 && me.mutexes[key].rlocks == 0 {
+			delete(me.mutexes, key)
+		}
+		me.mutex.Unlock()
+		return false
+	}
 	me.mutex.Unlock()
-	return m.TryRLock()
+	return true
 }
