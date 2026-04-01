@@ -120,25 +120,3 @@ func TestTryRLock(t *testing.T) {
 	m.RUnlock(key)
 	m.RUnlock(key)
 }
-
-func TestLockTimeout成功(t *testing.T) {
-	m := New()
-	key := "test-lock-timeout"
-
-	ok := m.LockTimeout(key, time.Second)
-	if !ok {
-		t.Fatal("LockTimeout should succeed on unlocked mutex")
-	}
-	m.Unlock(key)
-}
-
-func TestRLockTimeout成功(t *testing.T) {
-	m := New()
-	key := "test-rlock-timeout"
-
-	ok := m.RLockTimeout(key, time.Second)
-	if !ok {
-		t.Fatal("RLockTimeout should succeed on unlocked mutex")
-	}
-	m.RUnlock(key)
-}

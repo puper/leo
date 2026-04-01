@@ -2,7 +2,6 @@ package mutexmanager
 
 import (
 	"sync"
-	"time"
 )
 
 var (
@@ -109,64 +108,4 @@ func (me *MutexManager) TryRLock(key string) bool {
 	m := me.mutexes[key]
 	me.mutex.Unlock()
 	return m.TryRLock()
-}
-
-func (me *MutexManager) LockTimeout(key string, timeout time.Duration) bool {
-	me.mutex.Lock()
-	if _, ok := me.mutexes[key]; !ok {
-		me.mutexes[key] = &Mutex{}
-	}
-	me.mutexes[key].locks++
-	m := me.mutexes[key]
-	me.mutex.Unlock()
-
-	done := make(chan struct{}, 1)
-	go func() {
-		m.Lock()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return true
-	case <-time.After(timeout):
-		me.mutex.Lock()
-		me.mutexes[key].locks--
-		if me.mutexes[key].locks == 0 {
-			delete(me.mutexes, key)
-		}
-		me.mutex.Unlock()
-		<-done
-		return false
-	}
-}
-
-func (me *MutexManager) RLockTimeout(key string, timeout time.Duration) bool {
-	me.mutex.Lock()
-	if _, ok := me.mutexes[key]; !ok {
-		me.mutexes[key] = &Mutex{}
-	}
-	me.mutexes[key].rlocks++
-	m := me.mutexes[key]
-	me.mutex.Unlock()
-
-	done := make(chan struct{}, 1)
-	go func() {
-		m.RLock()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return true
-	case <-time.After(timeout):
-		me.mutex.Lock()
-		me.mutexes[key].rlocks--
-		if me.mutexes[key].locks == 0 && me.mutexes[key].rlocks == 0 {
-			delete(me.mutexes, key)
-		}
-		me.mutex.Unlock()
-		<-done
-		return false
-	}
 }
