@@ -1,18 +1,13 @@
 package db
 
 import (
-	"time"
-
 	"math/rand"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/puper/leo/components/db/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-)
-
-var (
-	rander = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 type (
@@ -30,6 +25,7 @@ type (
 )
 
 func New(cfg *config.Config) (*Db, error) {
+	rand.Int()
 	man := &Db{
 		config:   cfg,
 		wrappers: make(map[string]*Wrapper),
@@ -75,7 +71,7 @@ func (me *Wrapper) Read() *gorm.DB {
 	if len(me.slave) == 0 {
 		return me.master
 	}
-	return me.slave[rander.Intn(len(me.slave))]
+	return me.slave[rand.Intn(len(me.slave))]
 }
 
 func (me *Db) Write(name string) *gorm.DB {
@@ -92,4 +88,22 @@ func (me *Db) WriteModel(m Model) *gorm.DB {
 
 func (me *Db) ReadModel(m Model) *gorm.DB {
 	return me.Read(m.ConnectionName()).Model(m)
+}
+
+func (me *Db) Close() error {
+	var errs []error
+	for _, w := range me.wrappers {
+		if db, err := w.master.DB(); err == nil {
+			errs = append(errs, db.Close())
+		}
+		for _, s := range w.slave {
+			if db, err := s.DB(); err == nil {
+				errs = append(errs, db.Close())
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return errors.New("db close errors")
+	}
+	return nil
 }

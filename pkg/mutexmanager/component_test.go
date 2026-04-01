@@ -120,3 +120,35 @@ func TestTryRLock(t *testing.T) {
 	m.RUnlock(key)
 	m.RUnlock(key)
 }
+
+func TestMutexManagerLockUnlockRace(t *testing.T) {
+	mm := New()
+	key := "test-key"
+
+	// This test reproduces the race condition where Unlock is called
+	// before Lock completes its actual mutex acquisition
+	var wg sync.WaitGroup
+
+	// Goroutine that calls Lock
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		mm.Lock(key)
+		time.Sleep(10 * time.Millisecond) // Simulate work
+		mm.Unlock(key)
+	}()
+
+	// Goroutine that calls Unlock immediately (before Lock completes)
+	// This should cause a panic in the current implementation
+	defer func() {
+		if r := recover(); r != nil {
+			// Expected panic: "unlock of unlocked mutex"
+			t.Logf("Caught expected panic: %v", r)
+		}
+	}()
+
+	time.Sleep(1 * time.Millisecond) // Let Lock start but not complete
+	mm.Unlock(key)                   // This should panic because the actual mutex isn't locked yet
+
+	wg.Wait()
+}
