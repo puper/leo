@@ -8,6 +8,7 @@ type Config struct {
 	QueueName      string        `json:"queueName,omitempty"`
 	RoutingKey     string        `json:"routingKey,omitempty"`
 	AutoAck        bool          `json:"autoAck,omitempty"`
+	StartTimeout   time.Duration `json:"startTimeout,omitempty"`
 	CloseTimeout   time.Duration `json:"closeTimeout,omitempty"`
 	ReconnectDelay time.Duration `json:"reconnectDelay,omitempty"`
 

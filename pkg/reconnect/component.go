@@ -13,13 +13,16 @@ type Component struct {
 	config       ReconnectConfig
 	backoff      *Backoff
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	lifecycleMu sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 
 	mu        sync.Mutex
 	cond      *sync.Cond
 	connected bool
+	closing   bool
+	stopped   bool
 	clientSeq int64
 
 	doneCh chan struct{}
@@ -62,13 +65,22 @@ func New(connector Connector, eventHandler EventHandler, config ReconnectConfig)
 }
 
 func (c *Component) Start() error {
+	c.mu.Lock()
+	c.closing = false
+	c.stopped = false
+	c.mu.Unlock()
 	c.wg.Add(1)
 	go c.run()
 	return nil
 }
 
 func (c *Component) Close() error {
-	c.cancel()
+	c.mu.Lock()
+	c.closing = true
+	c.connected = false
+	c.mu.Unlock()
+	c.cond.Broadcast()
+	c.cancelContext()
 	c.wg.Wait()
 	return nil
 }
@@ -99,7 +111,7 @@ func (c *Component) GetClient() *Client {
 func (c *Component) WaitReconnect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for !c.connected {
+	for !c.connected && !c.stopped && !c.closing {
 		c.cond.Wait()
 	}
 }
@@ -116,58 +128,65 @@ func (c *Component) WaitRefresh() {
 
 func (c *Component) run() {
 	defer c.wg.Done()
-	defer close(c.doneCh)
 	defer c.backoff.Reset()
+	defer close(c.doneCh)
+	defer func() {
+		c.mu.Lock()
+		c.stopped = true
+		c.connected = false
+		c.mu.Unlock()
+		c.cond.Broadcast()
+	}()
 
 	c.connectLoop()
 }
 
 func (c *Component) connectLoop() {
+	attempt := 0
 	for {
-		err := c.connector.Connect(c.ctx)
+		if !c.waitRetry(attempt) {
+			return
+		}
+		ctx := c.getContext()
+		err := c.connector.Connect(ctx)
 		if err == nil {
-			c.mu.Lock()
-			c.connected = true
-			c.mu.Unlock()
+			c.backoff.Reset()
+			attempt = 0
+			c.setConnected(true)
 			c.eventHandler.OnConnected()
-			c.cond.Broadcast()
 
-			c.waitForDisconnect()
+			c.waitForDisconnect(ctx)
 
-			c.mu.Lock()
-			c.connected = false
-			c.mu.Unlock()
+			c.setConnected(false)
 
-			if c.ctx.Err() != nil {
+			if c.getContext().Err() != nil {
 				c.connector.Disconnect()
 				return
 			}
 			c.eventHandler.OnDisconnected(nil)
+			attempt = 1
 		} else {
 			c.eventHandler.OnError(err)
-		}
-
-		if !c.reconnect() {
-			return
+			attempt++
 		}
 	}
 }
 
-func (c *Component) waitForDisconnect() {
+func (c *Component) waitForDisconnect(ctx context.Context) {
 	healthCheck, hasHealthCheck := c.connector.(HealthCheckConnector)
 	if hasHealthCheck && c.config.GetHealthCheckInterval() > 0 {
-		c.healthCheckLoop(healthCheck)
+		c.healthCheckLoop(ctx, healthCheck)
 	} else {
-		<-c.ctx.Done()
+		<-ctx.Done()
 	}
 }
 
-func (c *Component) healthCheckLoop(hc HealthCheckConnector) {
+func (c *Component) healthCheckLoop(ctx context.Context, hc HealthCheckConnector) {
 	ticker := time.NewTicker(c.config.GetHealthCheckInterval())
 	defer ticker.Stop()
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), c.config.GetHealthCheckInterval()/2)
@@ -180,41 +199,88 @@ func (c *Component) healthCheckLoop(hc HealthCheckConnector) {
 	}
 }
 
-func (c *Component) reconnect() bool {
+func (c *Component) waitRetry(attempt int) bool {
+	ctx := c.getContext()
+	if ctx.Err() != nil {
+		return false
+	}
+	if attempt <= 0 {
+		return true
+	}
 	maxRetries := c.config.GetMaxRetries()
-	for attempt := 1; maxRetries == -1 || attempt <= maxRetries; attempt++ {
-		delay := c.backoff.NextDelay()
-		c.eventHandler.OnReconnecting(attempt, delay)
-		select {
-		case <-c.ctx.Done():
-			return false
-		case <-time.After(delay):
-		}
-		err := c.connector.Connect(c.ctx)
-		if err == nil {
+	if maxRetries != -1 && attempt > maxRetries {
+		return false
+	}
+	delay := c.backoff.NextDelay()
+	c.eventHandler.OnReconnecting(attempt, delay)
+	select {
+	case <-ctx.Done():
+		// ctx 可能因 tryRefresh 被替换；若已替换则继续后续循环。
+		if c.getContext() != ctx {
 			return true
 		}
-		c.eventHandler.OnError(err)
+		return false
+	case <-time.After(delay):
 	}
-	return false
+	return true
 }
 
 func (c *Component) tryRefresh(currentSeq int64) bool {
+	if c.isTerminating() {
+		return false
+	}
 	for {
 		seq := atomic.LoadInt64(&c.clientSeq)
 		if seq > currentSeq {
 			return false
 		}
 		if atomic.CompareAndSwapInt64(&c.clientSeq, seq, seq+1) {
-			c.mu.Lock()
-			c.connected = false
-			c.mu.Unlock()
+			c.setConnected(false)
 			c.connector.Disconnect()
-			c.cancel()
-			c.ctx, c.cancel = context.WithCancel(context.Background())
+			c.resetContext()
 			return true
 		}
 	}
+}
+
+func (c *Component) setConnected(connected bool) {
+	c.mu.Lock()
+	c.connected = connected
+	c.mu.Unlock()
+	c.cond.Broadcast()
+}
+
+func (c *Component) getContext() context.Context {
+	c.lifecycleMu.RLock()
+	defer c.lifecycleMu.RUnlock()
+	return c.ctx
+}
+
+func (c *Component) cancelContext() {
+	c.lifecycleMu.RLock()
+	cancel := c.cancel
+	c.lifecycleMu.RUnlock()
+	cancel()
+}
+
+func (c *Component) resetContext() {
+	if c.isTerminating() {
+		return
+	}
+	c.lifecycleMu.Lock()
+	if c.isTerminating() {
+		c.lifecycleMu.Unlock()
+		return
+	}
+	c.cancel()
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.lifecycleMu.Unlock()
+}
+
+func (c *Component) isTerminating() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closing || c.stopped
 }
 
 func (c *Client) Raw() interface{} {

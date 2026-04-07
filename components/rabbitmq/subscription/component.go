@@ -12,7 +12,16 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	defaultStartTimeout   = 10 * time.Second
+	defaultCloseTimeout   = 10 * time.Second
+	defaultReconnectDelay = time.Second
+)
+
 func New(cfg *config.Config) *Subscription {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Subscription{
 		config: cfg,
@@ -34,6 +43,7 @@ type Subscription struct {
 	wg     *sync.WaitGroup
 	inited bool
 	initCh chan error
+	initOnce sync.Once
 
 	subscriptionCallback func(*amqp.Channel, *config.Config, bool) (<-chan amqp.Delivery, error)
 
@@ -104,9 +114,9 @@ func (me *Subscription) Start() error {
 		return err
 	case <-me.ctx.Done():
 		return me.ctx.Err()
-	case <-time.After(me.config.CloseTimeout):
+	case <-time.After(me.startTimeout()):
 		me.cancel()
-		return fmt.Errorf("start timeout after %v", me.config.CloseTimeout)
+		return fmt.Errorf("start timeout after %v", me.startTimeout())
 	}
 }
 
@@ -133,7 +143,7 @@ func (me *Subscription) ClearMsgs() {
 func (me *Subscription) mainloop() {
 	defer me.wg.Done()
 	defer me.cancel()
-	reconnectDelay := me.config.ReconnectDelay
+	reconnectDelay := me.reconnectDelay()
 	for {
 		signalCh := make(chan struct{}, 1)
 		doneCh := make(chan struct{}, 1)
@@ -143,7 +153,7 @@ func (me *Subscription) mainloop() {
 			close(signalCh)
 			select {
 			case <-doneCh:
-			case <-time.After(me.config.CloseTimeout):
+			case <-time.After(me.closeTimeout()):
 			}
 			return
 		case <-doneCh:
@@ -169,9 +179,7 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 	defer close(doneCh)
 	conn, err := amqp.Dial(me.config.Addr)
 	if err != nil {
-		if !me.inited {
-			me.initCh <- err
-		}
+		me.notifyInit(err)
 		return err
 	}
 	defer conn.Close()
@@ -179,17 +187,13 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 	conn.NotifyClose(connCloseCh)
 	ch, err := conn.Channel()
 	if err != nil {
-		if !me.inited {
-			me.initCh <- err
-		}
+		me.notifyInit(err)
 		return err
 	}
 	defer ch.Close()
 	if me.config.PrefetchCount > 0 || me.config.PrefetchSize > 0 {
 		if err := ch.Qos(me.config.PrefetchCount, me.config.PrefetchSize, false); err != nil {
-			if !me.inited {
-				me.initCh <- err
-			}
+			me.notifyInit(err)
 			return fmt.Errorf("set qos: %w", err)
 		}
 	}
@@ -199,22 +203,18 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 	ch.NotifyCancel(chCancelCh)
 	if !me.inited {
 		if err := me.Declare(ch); err != nil {
-			if !me.inited {
-				me.initCh <- err
-			}
+			me.notifyInit(err)
 			return err
 		}
 	}
 	deliveries, err := me.subscriptionCallback(ch, me.config, me.inited)
 	if err != nil {
-		if !me.inited {
-			me.initCh <- err
-		}
+		me.notifyInit(err)
 		return err
 	}
 	if !me.inited {
 		me.inited = true
-		me.initCh <- nil
+		me.notifyInit(nil)
 	}
 	for {
 		select {
@@ -227,25 +227,56 @@ func (me *Subscription) run(signalCh chan struct{}, doneCh chan struct{}) error 
 		case c := <-chCancelCh:
 			return fmt.Errorf("cancel: %s", c)
 		case d, ok := <-deliveries:
-			if ok {
-				msg := &Message{
-					Delivery: d,
-					config:   me.config,
-					cache:    me.cache,
-				}
-				if !msg.IsDuplicated() {
-					select {
-					case me.msgCh <- msg:
-					default:
-						log.Printf("rabbitmq subscription: msgCh full, dropping message, delivery_tag=%d", msg.DeliveryTag)
-						msg.Ack(false)
-					}
-				} else {
+			if !ok {
+				return fmt.Errorf("deliveries channel closed")
+			}
+			msg := &Message{
+				Delivery: d,
+				config:   me.config,
+				cache:    me.cache,
+			}
+			if !msg.IsDuplicated() {
+				select {
+				case me.msgCh <- msg:
+				default:
+					log.Printf("rabbitmq subscription: msgCh full, dropping message, delivery_tag=%d", msg.DeliveryTag)
 					msg.Ack(false)
 				}
+			} else {
+				msg.Ack(false)
 			}
 		}
 	}
+}
+
+func (me *Subscription) notifyInit(err error) {
+	me.initOnce.Do(func() {
+		select {
+		case me.initCh <- err:
+		default:
+		}
+	})
+}
+
+func (me *Subscription) startTimeout() time.Duration {
+	if me.config.StartTimeout > 0 {
+		return me.config.StartTimeout
+	}
+	return defaultStartTimeout
+}
+
+func (me *Subscription) closeTimeout() time.Duration {
+	if me.config.CloseTimeout > 0 {
+		return me.config.CloseTimeout
+	}
+	return defaultCloseTimeout
+}
+
+func (me *Subscription) reconnectDelay() time.Duration {
+	if me.config.ReconnectDelay > 0 {
+		return me.config.ReconnectDelay
+	}
+	return defaultReconnectDelay
 }
 
 type Message struct {

@@ -13,14 +13,14 @@ type mockConnector struct {
 	mu          sync.Mutex
 	connected   bool
 	connectErr  error
-	connectFunc func() error
+	connectFunc func(context.Context) error
 }
 
 func (c *mockConnector) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.connectFunc != nil {
-		return c.connectFunc()
+		return c.connectFunc(ctx)
 	}
 	c.connected = c.connectErr == nil
 	return c.connectErr
@@ -45,10 +45,14 @@ func (c *mockConnector) GetClient() interface{} {
 
 type mockHealthConnector struct {
 	mockConnector
-	pingErr error
+	pingErr  error
+	pingFunc func(context.Context) error
 }
 
 func (c *mockHealthConnector) SendPing(ctx context.Context) error {
+	if c.pingFunc != nil {
+		return c.pingFunc(ctx)
+	}
 	return c.pingErr
 }
 
@@ -95,7 +99,7 @@ func (h *mockEventHandler) OnError(err error) {
 func TestComponent_Start_Success(t *testing.T) {
 	connectCount := 0
 	conn := &mockConnector{}
-	conn.connectFunc = func() error {
+	conn.connectFunc = func(context.Context) error {
 		connectCount++
 		if connectCount < 3 {
 			return errors.New("connection failed")
@@ -300,7 +304,7 @@ func TestClient_GetClient(t *testing.T) {
 	cfg := &DefaultReconnectConfig{MaxRetries: -1, InitialInterval: time.Millisecond * 10}
 	comp := New(conn, handler, cfg)
 
-	conn.connectFunc = func() error {
+	conn.connectFunc = func(context.Context) error {
 		conn.connected = true
 		return nil
 	}
@@ -324,7 +328,7 @@ func TestClient_Do_Success(t *testing.T) {
 	cfg := &DefaultReconnectConfig{MaxRetries: -1, InitialInterval: time.Millisecond * 10}
 	comp := New(conn, handler, cfg)
 
-	conn.connectFunc = func() error {
+	conn.connectFunc = func(context.Context) error {
 		conn.connected = true
 		return nil
 	}
@@ -349,7 +353,7 @@ func TestClient_Do_RefreshOnError(t *testing.T) {
 	cfg := &DefaultReconnectConfig{MaxRetries: -1, InitialInterval: time.Millisecond * 10}
 	comp := New(conn, handler, cfg)
 
-	conn.connectFunc = func() error {
+	conn.connectFunc = func(context.Context) error {
 		connectCount++
 		if connectCount < 3 {
 			return errors.New("connection error")
@@ -374,5 +378,80 @@ func TestClient_Do_RefreshOnError(t *testing.T) {
 	}
 	if connectCount < 2 {
 		t.Error("Should have retried after error")
+	}
+}
+
+func TestComponent_ReconnectOnlyConnectsOncePerAttempt(t *testing.T) {
+	var connectCount int64
+	conn := &mockHealthConnector{}
+	conn.connectFunc = func(context.Context) error {
+		atomic.AddInt64(&connectCount, 1)
+		conn.connected = true
+		return nil
+	}
+	var failFirstPing int64 = 1
+	conn.pingFunc = func(context.Context) error {
+		if atomic.CompareAndSwapInt64(&failFirstPing, 1, 0) {
+			return errors.New("ping failed once")
+		}
+		return nil
+	}
+	handler := &mockEventHandler{}
+	cfg := &DefaultReconnectConfig{
+		MaxRetries:          -1,
+		InitialInterval:     10 * time.Millisecond,
+		HealthCheckInterval: 10 * time.Millisecond,
+	}
+	comp := New(conn, handler, cfg)
+	if err := comp.Start(); err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+	defer comp.Close()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		handler.mu.Lock()
+		connectedCount := handler.connectedCount
+		handler.mu.Unlock()
+		if connectedCount >= 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timeout waiting reconnect, connectCount=%d", atomic.LoadInt64(&connectCount))
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	if got := atomic.LoadInt64(&connectCount); got != 2 {
+		t.Fatalf("unexpected connect count after one reconnect cycle: got=%d want=2", got)
+	}
+}
+
+func TestWaitReconnectReturnsOnClose(t *testing.T) {
+	conn := &mockConnector{connectErr: errors.New("always fail")}
+	handler := &mockEventHandler{}
+	cfg := &DefaultReconnectConfig{MaxRetries: -1, InitialInterval: 20 * time.Millisecond}
+	comp := New(conn, handler, cfg)
+	if err := comp.Start(); err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		comp.WaitReconnect()
+		close(done)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	if err := comp.Close(); err != nil {
+		t.Fatalf("Close() failed: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("WaitReconnect() should return after Close()")
 	}
 }

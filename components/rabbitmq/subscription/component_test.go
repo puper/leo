@@ -97,6 +97,38 @@ func TestMsgChCapacity(t *testing.T) {
 	}
 }
 
+func TestDefaultTimeoutAndDelay(t *testing.T) {
+	sub := New(&config.Config{})
+
+	if sub.startTimeout() <= 0 {
+		t.Fatal("startTimeout should have positive default")
+	}
+	if sub.closeTimeout() <= 0 {
+		t.Fatal("closeTimeout should have positive default")
+	}
+	if sub.reconnectDelay() <= 0 {
+		t.Fatal("reconnectDelay should have positive default")
+	}
+}
+
+func TestNotifyInitOnlyOnce(t *testing.T) {
+	sub := New(&config.Config{})
+
+	sub.notifyInit(context.Canceled)
+	sub.notifyInit(nil)
+
+	first := <-sub.initCh
+	if first != context.Canceled {
+		t.Fatalf("unexpected first init result: %v", first)
+	}
+
+	select {
+	case second := <-sub.initCh:
+		t.Fatalf("initCh should only receive one result, got %v", second)
+	default:
+	}
+}
+
 func TestPrefetchCountConfig(t *testing.T) {
 	cfg := &config.Config{
 		PrefetchCount: 10,
