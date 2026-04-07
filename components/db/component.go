@@ -26,7 +26,6 @@ type (
 )
 
 func New(cfg *config.Config) (*Db, error) {
-	rand.Int()
 	man := &Db{
 		config:   cfg,
 		wrappers: make(map[string]*Wrapper),
