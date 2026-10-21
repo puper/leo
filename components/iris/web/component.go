@@ -2,14 +2,17 @@ package web
 
 import (
 	"context"
+	"errors"
+	"net"
 
 	"github.com/kataras/iris/v12"
 	"github.com/puper/leo/components/iris/web/config"
 )
 
 type Web struct {
-	config *config.Config
-	app    *iris.Application
+	config   *config.Config
+	app      *iris.Application
+	listener net.Listener
 }
 
 func (me *Web) GetApp() *iris.Application {
@@ -26,5 +29,13 @@ func (me *Web) Close() error {
 		ctx, cancel = context.WithTimeout(ctx, me.config.ShutdownTimeout)
 		defer cancel()
 	}
-	return me.app.Shutdown(ctx)
+	shutdownErr := me.app.Shutdown(ctx)
+	if me.listener == nil {
+		return shutdownErr
+	}
+	closeErr := me.listener.Close()
+	if errors.Is(closeErr, net.ErrClosed) {
+		closeErr = nil
+	}
+	return errors.Join(shutdownErr, closeErr)
 }

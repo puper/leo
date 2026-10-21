@@ -5,10 +5,10 @@ import (
 	"log/slog"
 )
 
-func integrate(logger any) Handler {
+func integrade(logger any) Handler {
 	switch v := logger.(type) {
 	case *slog.Logger:
-		return integrateSlog(v)
+		return integradeSlog(v)
 	case ExternalLogger:
 		return integrateExternalLogger(v)
 	case StdLogger:
@@ -34,7 +34,7 @@ func (*slog.Logger).WarnContext(ctx context.Context, msg string, args ...any)
 func (*slog.Logger).With(args ...any) *slog.Logger
 func (*slog.Logger).WithGroup(name string) *slog.Logger
 */
-func integrateSlog(logger *slog.Logger) Handler {
+func integradeSlog(logger *slog.Logger) Handler {
 	return func(log *Log) bool {
 		// golog level to slog level.
 		level := getSlogLevel(log.Level)
@@ -60,12 +60,12 @@ func integrateSlog(logger *slog.Logger) Handler {
 //
 // See `Logger#Install` and `Logger#Handle` for more.
 type ExternalLogger interface {
-	Print(...any)
-	Println(...any)
-	Error(...any)
-	Warn(...any)
-	Info(...any)
-	Debug(...any)
+	Print(...interface{})
+	Println(...interface{})
+	Error(...interface{})
+	Warn(...interface{})
+	Info(...interface{})
+	Debug(...interface{})
 }
 
 // integrateExternalLogger is a Handler which
@@ -98,7 +98,7 @@ func getSlogLevel(level Level) slog.Level {
 	return slog.LevelDebug
 }
 
-func getExternalPrintFunc(logger ExternalLogger, log *Log) func(...any) {
+func getExternalPrintFunc(logger ExternalLogger, log *Log) func(...interface{}) {
 	switch log.Level {
 	case ErrorLevel:
 		return logger.Error
@@ -126,9 +126,9 @@ func getExternalPrintFunc(logger ExternalLogger, log *Log) func(...any) {
 //
 // See `Logger#Install` and `Logger#Handle` for more.
 type StdLogger interface {
-	Printf(format string, v ...any)
-	Print(v ...any)
-	Println(v ...any)
+	Printf(format string, v ...interface{})
+	Print(v ...interface{})
+	Println(v ...interface{})
 }
 
 func integrateStdLogger(logger StdLogger) Handler {
@@ -139,7 +139,7 @@ func integrateStdLogger(logger StdLogger) Handler {
 	}
 }
 
-func getStdPrintFunc(logger StdLogger, log *Log) func(...any) {
+func getStdPrintFunc(logger StdLogger, log *Log) func(...interface{}) {
 	// no levels here
 
 	// passed with Println

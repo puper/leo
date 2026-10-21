@@ -442,7 +442,7 @@ func (g *Gormigrate) unknownMigrationsHaveHappened() (bool, error) {
 		}
 	}
 
-	return false, nil
+	return false, rows.Err()
 }
 
 func (g *Gormigrate) insertMigration(id string) error {

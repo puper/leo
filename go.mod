@@ -54,7 +54,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/kataras/blocks v0.0.12 // indirect
-	github.com/kataras/golog v0.1.15 // indirect
+	github.com/kataras/golog v0.1.12 // indirect
 	github.com/kataras/pio v0.0.14 // indirect
 	github.com/kataras/sitemap v0.0.6 // indirect
 	github.com/kataras/tunnel v0.0.4 // indirect

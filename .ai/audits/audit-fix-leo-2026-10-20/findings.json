@@ -1,0 +1,975 @@
+[
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F01",
+    "fingerprint": "db/migration-history/row-error",
+    "module": "components/db",
+    "surface": "迁移历史遍历忽略末尾读取错误",
+    "severity": "P2",
+    "trigger_condition": "历史记录在首行或中途读取失败仍执行、记录后续迁移",
+    "claim": "迁移历史遍历忽略末尾读取错误",
+    "current_behavior": "历史记录在首行或中途读取失败仍执行、记录后续迁移",
+    "expected_behavior": "遍历后返回 rows.Err，查询、扫描、未知版本及正常历史均覆盖",
+    "static_evidence": [
+      "components/db/migrate.go"
+    ],
+    "runtime_reproduction": "真实 GORM + database/sql 故障夹具；原实现两个错误场景返回 nil 并执行迁移",
+    "counterevidence": "查询和 Scan 错误原本已处理；正常空历史和已知历史仍应成功",
+    "root_cause": "db/migration-history/row-error",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestMigrateValidatesCompleteHistory"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F02",
+    "fingerprint": "build/iris-golog/rich-option-types",
+    "module": "go.mod",
+    "surface": "Iris 与 golog 接口不兼容",
+    "severity": "P1",
+    "trigger_condition": "全量构建发生 RichOption 类型不匹配",
+    "claim": "Iris 与 golog 接口不兼容",
+    "current_behavior": "全量构建发生 RichOption 类型不匹配",
+    "expected_behavior": "golog 调整至 v0.1.12，go mod vendor 正式生成，其他模块版本不变",
+    "static_evidence": [
+      "go.mod",
+      "vendor/modules.txt"
+    ],
+    "runtime_reproduction": "基线编译失败，修复后全量构建通过",
+    "counterevidence": "已核对 Iris v12.2.11 依赖声明与 golog 0.1.12 类型；无需升级 Iris 或手改依赖",
+    "root_cause": "build/iris-golog/rich-option-types",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "go build ./..."
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "build+runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F03",
+    "fingerprint": "localfile/result-contract/missing-and-directory",
+    "module": "components/storage/localfile",
+    "surface": "文件读取与目录元数据结果错误",
+    "severity": "P2",
+    "trigger_condition": "不存在文件返回 nil,nil；目录的 IsDir 未赋值",
+    "claim": "文件读取与目录元数据结果错误",
+    "current_behavior": "不存在文件返回 nil,nil；目录的 IsDir 未赋值",
+    "expected_behavior": "直接读取并传播不存在错误，补齐目录标记",
+    "static_evidence": [
+      "components/storage/localfile/component.go"
+    ],
+    "runtime_reproduction": "本地文件系统反例失败，修复后通过",
+    "counterevidence": "零字节文件仍是合法成功；Exists 的不存在语义仍为 false,nil",
+    "root_cause": "localfile/result-contract/missing-and-directory",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestFileErrorsAndDirectoryInfo"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F04",
+    "fingerprint": "localfile/create/check-then-write",
+    "module": "components/storage/localfile",
+    "surface": "非覆盖创建存在检查与写入竞争",
+    "severity": "P2",
+    "trigger_condition": "并发创建同一路径时多个调用成功并覆盖",
+    "claim": "非覆盖创建存在检查与写入竞争",
+    "current_behavior": "并发创建同一路径时多个调用成功并覆盖",
+    "expected_behavior": "使用 O_EXCL 原子创建，仅 ForceReplace 使用截断写入",
+    "static_evidence": [
+      "components/storage/localfile/component.go"
+    ],
+    "runtime_reproduction": "原始源码副本出现 8 个成功创建者；当前实现只有 1 个",
+    "counterevidence": "保留自动建目录和显式覆盖行为",
+    "root_cause": "localfile/create/check-then-write",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestConcurrentCreateDoesNotOverwrite"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F05",
+    "fingerprint": "localfile/io/symlink-root-escape",
+    "module": "components/storage/localfile",
+    "surface": "符号链接绕过存储根目录边界",
+    "severity": "P1",
+    "trigger_condition": "根内链接可读取、写入、列出或删除根外目标",
+    "claim": "符号链接绕过存储根目录边界",
+    "current_behavior": "根内链接可读取、写入、列出或删除根外目标",
+    "expected_behavior": "实际 I/O 使用 Go1.25 已具备的 os.Root",
+    "static_evidence": [
+      "components/storage/localfile/component.go"
+    ],
+    "runtime_reproduction": "原实现六类越界操作成功，修复后拒绝；macOS 与 Linux 均通过",
+    "counterevidence": "词法 ../ 校验已有效但不能覆盖链接；根内相对链接和删除配置根路径仍支持",
+    "root_cause": "localfile/io/symlink-root-escape",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestStorageCannotFollowSymlinkOutsideRoot",
+      "TestCreateMissingRootAndInternalSymlink",
+      "TestRemoveConfiguredRoot"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F06",
+    "fingerprint": "timewheel/job-index/composite-key-collision",
+    "module": "pkg/timewheel",
+    "surface": "不同任务的字符串拼接键碰撞",
+    "severity": "P2",
+    "trigger_condition": "(a:b,c) 与 (a,b:c) 覆盖彼此",
+    "claim": "不同任务的字符串拼接键碰撞",
+    "current_behavior": "(a:b,c) 与 (a,b:c) 覆盖彼此",
+    "expected_behavior": "以结构体二元组作为内部 map 键",
+    "static_evidence": [
+      "pkg/timewheel/component.go"
+    ],
+    "runtime_reproduction": "原实现丢失一项任务；修复后两项均派发",
+    "counterevidence": "没有改变公开 Key/Id 字符串取值范围",
+    "root_cause": "timewheel/job-index/composite-key-collision",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestCompositeJobKeysDoNotCollide"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F07",
+    "fingerprint": "timewheel/dispatch/reentrant-request-deadlock",
+    "module": "pkg/timewheel",
+    "surface": "回调新增任务与主循环派发互相等待",
+    "severity": "P1",
+    "trigger_condition": "零缓冲队列下回调 Add 无法返回",
+    "claim": "回调新增任务与主循环派发互相等待",
+    "current_behavior": "零缓冲队列下回调 Add 无法返回",
+    "expected_behavior": "待派发队列与请求接收共同参与 select；关闭时保留已到期派发",
+    "static_evidence": [
+      "pkg/timewheel/component.go"
+    ],
+    "runtime_reproduction": "原实现超时；修复后执行及关闭回归通过",
+    "counterevidence": "只加大缓冲不能消除循环等待；未改变 Close 等待回调结束的契约",
+    "root_cause": "timewheel/dispatch/reentrant-request-deadlock",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestCallbackCanAddWithUnbufferedQueues",
+      "TestCloseWaitsMainloopAndDispatch"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F08",
+    "fingerprint": "reconnect/backoff/duration-overflow",
+    "module": "pkg/reconnect",
+    "surface": "长时间重试退避发生整数溢出",
+    "severity": "P2",
+    "trigger_condition": "Linux amd64 第 34 次重试返回负 duration",
+    "claim": "长时间重试退避发生整数溢出",
+    "current_behavior": "Linux amd64 第 34 次重试返回负 duration",
+    "expected_behavior": "浮点计算后先限幅再转换 duration",
+    "static_evidence": [
+      "pkg/reconnect/backoff.go"
+    ],
+    "runtime_reproduction": "Linux amd64 原始源码反例失败，当前源码 10000 次循环通过",
+    "counterevidence": "Darwin arm64 的转换表现不同，不能只靠本机结果排除跨平台缺陷",
+    "root_cause": "reconnect/backoff/duration-overflow",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestBackoffRemainsBoundedAfterLongOutage"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F09",
+    "fingerprint": "reconnect/connection-generation/lifecycle-synchronization",
+    "module": "pkg/reconnect",
+    "surface": "连接代次、重连资源和并发生命周期不一致",
+    "severity": "P1",
+    "trigger_condition": "旧连接未断开；健康重连后 wrapper 仍引用旧对象；Raw/Do/seq 竞态；重复启动；健康检查不能随关闭取消",
+    "claim": "连接代次、重连资源和并发生命周期不一致",
+    "current_behavior": "旧连接未断开；健康重连后 wrapper 仍引用旧对象；Raw/Do/seq 竞态；重复启动；健康检查不能随关闭取消",
+    "expected_behavior": "单一循环拥有连接操作；锁内发布代次和快照；当前代次取消；启动关闭守卫及既有关闭超时",
+    "static_evidence": [
+      "pkg/reconnect/component.go",
+      "pkg/reconnect/connector.go"
+    ],
+    "runtime_reproduction": "旧连接计数、过期客户端及 race 检测均复现；当前全量 race 通过",
+    "counterevidence": "README 明确支持并发 Client.Do；回调在锁外执行；测试夹具竞态独立修复",
+    "root_cause": "reconnect/connection-generation/lifecycle-synchronization",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestHealthReconnectReplacesExistingClient",
+      "TestConcurrentClientRefreshAndRaw",
+      "TestStartIsIdempotentAndCannotRestartAfterClose",
+      "TestCloseCancelsInflightHealthCheck",
+      "TestCloseTimeoutReportsBlockedConnector",
+      "TestConcurrentStartAndClose"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F10",
+    "fingerprint": "shared/builder/unpublished-resource-cleanup",
+    "module": "components/db",
+    "surface": "构造失败未释放已取得的资源",
+    "severity": "P2",
+    "trigger_condition": "后续配置或从库初始化失败，先前连接/文件对象无人关闭",
+    "claim": "构造失败未释放已取得的资源",
+    "current_behavior": "后续配置或从库初始化失败，先前连接/文件对象无人关闭",
+    "expected_behavior": "失败时清理尚未交给引擎的资源，保留主错误与可返回的关闭错误",
+    "static_evidence": [
+      "components/db/component.go",
+      "components/db/builder.go",
+      "components/etcd/builder.go",
+      "components/grpc/client/builder.go",
+      "components/grpc/server/builder.go",
+      "components/nats/builder.go",
+      "components/influxdb/builder.go",
+      "components/zaplog/log/builder.go"
+    ],
+    "runtime_reproduction": "SDK 状态、SQL pool、本地 NATS TCP 及真实 MySQL 均验证；MySQL 原始源码从 1 个连接增至 2 个，当前恢复至 1 个",
+    "counterevidence": "引擎只能关闭成功返回并登记的实例，无法替 Builder 回收未返回资源",
+    "root_cause": "shared/builder/unpublished-resource-cleanup",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestBuilderClosesClientWhenConfigurerFails",
+      "TestBuilderClosesConnectionWhenConfigurerFails",
+      "TestPartialInitializationClosesOpenedPools"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F11",
+    "fingerprint": "grpcserver/close/unused-shutdown-timeout",
+    "module": "components/grpc/server",
+    "surface": "gRPC 关闭忽略已配置的超时",
+    "severity": "P2",
+    "trigger_condition": "活动 RPC 使 GracefulStop 超过 ShutdownTimeout",
+    "claim": "gRPC 关闭忽略已配置的超时",
+    "current_behavior": "活动 RPC 使 GracefulStop 超过 ShutdownTimeout",
+    "expected_behavior": "在截止时间触发 Stop 并返回 DeadlineExceeded",
+    "static_evidence": [
+      "components/grpc/server/component.go"
+    ],
+    "runtime_reproduction": "实际 TCP RPC 复现超时，修复后活动 RPC 被取消",
+    "counterevidence": "未配置正超时时保留原有等待行为；不把超时当作正常成功",
+    "root_cause": "grpcserver/close/unused-shutdown-timeout",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestCloseHonorsShutdownTimeout",
+      "TestCloseWithoutActiveRPC"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F12",
+    "fingerprint": "restyclient/set-timeout/config-loss",
+    "module": "components/restyclient",
+    "surface": "设置 HTTP 超时丢失已有客户端配置",
+    "severity": "P2",
+    "trigger_condition": "新建空 Resty 导致 base URL、请求头和 hooks 丢失",
+    "claim": "设置 HTTP 超时丢失已有客户端配置",
+    "current_behavior": "新建空 Resty 导致 base URL、请求头和 hooks 丢失",
+    "expected_behavior": "按 SetX 约定修改当前客户端并返回自身",
+    "static_evidence": [
+      "components/restyclient/component.go"
+    ],
+    "runtime_reproduction": "原实现相对 URL 请求失败；修复后实际 HTTP 请求及 hook 通过",
+    "counterevidence": "Resty.Clone 是浅拷贝，会共享 http.Client；不采用它假装提供独立超时",
+    "root_cause": "restyclient/set-timeout/config-loss",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestSetTimeoutPreservesClientConfiguration"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F13",
+    "fingerprint": "influxdb/query/protocol-error-as-success",
+    "module": "components/influxdb",
+    "surface": "查询协议错误被转换为空结果成功",
+    "severity": "P2",
+    "trigger_condition": "无效 JSON、HTTP200 的 error、非法结构或行列数不一致被忽略",
+    "claim": "查询协议错误被转换为空结果成功",
+    "current_behavior": "无效 JSON、HTTP200 的 error、非法结构或行列数不一致被忽略",
+    "expected_behavior": "在映射数据前验证响应；保留 RawMessage 大整数精度",
+    "static_evidence": [
+      "components/influxdb/query.go"
+    ],
+    "runtime_reproduction": "本地 HTTP 响应覆盖错误和正常空结果；9007199254740993 精度保持",
+    "counterevidence": "HTTP200 不保证查询成功，已核对官方 v1 API；QueryRaw 保留原始响应接口",
+    "root_cause": "influxdb/query/protocol-error-as-success",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestQueryRejectsFailedOrMalformedResponses"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F14",
+    "fingerprint": "rabbitmq/delivery/channel-scoped-ack-state",
+    "module": "components/rabbitmq/subscription",
+    "surface": "重连复用 DeliveryTag 被误判为重复",
+    "severity": "P1",
+    "trigger_condition": "不同 channel 从相同 delivery tag 起步时被旧确认缓存丢弃",
+    "claim": "重连复用 DeliveryTag 被误判为重复",
+    "current_behavior": "不同 channel 从相同 delivery tag 起步时被旧确认缓存丢弃",
+    "expected_behavior": "缓存归属于当前 channel，旧 Message 只持有旧缓存",
+    "static_evidence": [
+      "components/rabbitmq/subscription/component.go"
+    ],
+    "runtime_reproduction": "真实 Message.Ack 接口夹具验证；当前实现完整路径传入每个 channel 新建的缓存",
+    "counterevidence": "DeliveryTag 只在 channel 内唯一；AutoAck 保留原有无需手动确认语义",
+    "root_cause": "rabbitmq/delivery/channel-scoped-ack-state",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestDeliveryTagsAreIsolatedBetweenChannels",
+      "TestAckFailureIsNotCached"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F15",
+    "fingerprint": "rabbitmq/lifecycle/cancellation-and-start-failure",
+    "module": "components/rabbitmq/subscription",
+    "surface": "RabbitMQ 启动失败与关闭状态不准确",
+    "severity": "P2",
+    "trigger_condition": "启动首错后继续后台重连；关闭不能打断握手；常规 Close 返回 Canceled；ClearMsgs 竞争可能阻塞",
+    "claim": "RabbitMQ 启动失败与关闭状态不准确",
+    "current_behavior": "启动首错后继续后台重连；关闭不能打断握手；常规 Close 返回 Canceled；ClearMsgs 竞争可能阻塞",
+    "expected_behavior": "失败启动回收；拨号/握手受组件取消；准确区分正常关闭和超时；非阻塞清空",
+    "static_evidence": [
+      "components/rabbitmq/subscription/component.go"
+    ],
+    "runtime_reproduction": "本地不响应 AMQP 握手的 TCP 服务复现，修复后关闭及时完成",
+    "counterevidence": "保留 URI connection_timeout；自定义阻塞回调仍可能超时，此时准确报错",
+    "root_cause": "rabbitmq/lifecycle/cancellation-and-start-failure",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestFailedStartStopsSubscription",
+      "TestCloseCancelsAMQPHandshake",
+      "TestStartCloseRace"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F16",
+    "fingerprint": "uniqid/lease-ownership/generation-and-lifecycle",
+    "module": "components/uniqid",
+    "surface": "失去租约继续发号及状态/观察/关闭不一致",
+    "severity": "P1",
+    "trigger_condition": "租约释放后仍生成 ID；内部集合被调用方修改；状态竞态；订阅派发未退出；Watch 关闭空转及快照缺口",
+    "claim": "失去租约继续发号及状态/观察/关闭不一致",
+    "current_behavior": "租约释放后仍生成 ID；内部集合被调用方修改；状态竞态；订阅派发未退出；Watch 关闭空转及快照缺口",
+    "expected_behavior": "按用户选择保留 Generate() ID，失效 panic；节点私有；本地期限门控；单次续租；快照与修订号；完整取消/回收",
+    "static_evidence": [
+      "components/uniqid/component.go"
+    ],
+    "runtime_reproduction": "故障接口夹具 red/green + race；官方 etcd3.6.7 双实例跨原 TTL 发号及释放通过",
+    "counterevidence": "Get 错误原本已经处理，不作为新缺陷；历史删除早于当前申请修订号时不得误伤新租约",
+    "root_cause": "uniqid/lease-ownership/generation-and-lifecycle",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestGenerateDoesNotContinueAfterLeaseRevoke",
+      "TestGenerateFailsWhenRenewalFails",
+      "TestGenerateFailsAtExpiryWithoutRenewalResponse",
+      "TestRenewalExtendsValidity",
+      "TestOwnershipLossStopsGeneration",
+      "TestHistoricalDeleteBeforeClaimDoesNotInvalidateLease",
+      "TestCloseReportsRevokeFailure",
+      "TestEtcdLeaseAllocationRenewalAndRelease"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F17",
+    "fingerprint": "zaplog/close/owned-file-writer",
+    "module": "components/zaplog/log",
+    "surface": "日志管理器关闭后文件描述符仍打开",
+    "severity": "P2",
+    "trigger_condition": "AddSync 给 lumberjack 的 Sync 不会关闭文件",
+    "claim": "日志管理器关闭后文件描述符仍打开",
+    "current_behavior": "AddSync 给 lumberjack 的 Sync 不会关闭文件",
+    "expected_behavior": "记录并关闭管理器自有 writer，保留 stdout 所有权",
+    "static_evidence": [
+      "components/zaplog/log/component.go"
+    ],
+    "runtime_reproduction": "Unix /dev/fd 与 Fstat 确认原实现留下 1 个描述符；macOS/Linux 当前实现为 0",
+    "counterevidence": "不关闭共享 stdout；独立 NewLog 的返回类型保持不变",
+    "root_cause": "zaplog/close/owned-file-writer",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestCloseReleasesOwnedLogFile"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F18",
+    "fingerprint": "engine/wait/signal-subscription-lifetime",
+    "module": "engine",
+    "surface": "Wait 退出未解除信号订阅",
+    "severity": "P3",
+    "trigger_condition": "signal.Notify 注册在 Wait 结束后仍存在",
+    "claim": "Wait 退出未解除信号订阅",
+    "current_behavior": "signal.Notify 注册在 Wait 结束后仍存在",
+    "expected_behavior": "增加对应 defer signal.Stop",
+    "static_evidence": [
+      "engine/engine.go"
+    ],
+    "runtime_reproduction": "静态注册/释放配对及引擎回归通过",
+    "counterevidence": "未改动已有信号集合或关闭顺序；未把静态配对验证冒充信号端到端测试",
+    "root_cause": "engine/wait/signal-subscription-lifetime",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "go test ./engine",
+      "go vet ./..."
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "static"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F19",
+    "fingerprint": "iris/run/runner-configurator-type",
+    "module": "components/iris/web",
+    "surface": "Iris 启动调用把 Runner 当作 Configurator",
+    "severity": "P1",
+    "trigger_condition": "修复依赖类型后项目仍无法构建",
+    "claim": "Iris 启动调用把 Runner 当作 Configurator",
+    "current_behavior": "修复依赖类型后项目仍无法构建",
+    "expected_behavior": "用一个 Runner 将既有 listener 交给带超时配置的 Server",
+    "static_evidence": [
+      "components/iris/web/builder.go"
+    ],
+    "runtime_reproduction": "编译错误明确，修复后实际 HTTP 请求及超时配置验证通过",
+    "counterevidence": "没有删除 Read/Write/IdleTimeout 来迁就签名",
+    "root_cause": "iris/run/runner-configurator-type",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "go build ./...",
+      "TestServerUsesConfiguredTimeoutsAndCloses"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "build+runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F20",
+    "fingerprint": "influxdb/transport/owned-http-pool",
+    "module": "components/influxdb",
+    "surface": "InfluxDB 自有 HTTP 连接池未关闭",
+    "severity": "P2",
+    "trigger_condition": "成功关闭及两种初始化失败路径均遗留 idle connection",
+    "claim": "InfluxDB 自有 HTTP 连接池未关闭",
+    "current_behavior": "成功关闭及两种初始化失败路径均遗留 idle connection",
+    "expected_behavior": "组件显式保存并关闭自有 http.Client 的 idle connections",
+    "static_evidence": [
+      "components/influxdb/component.go",
+      "components/influxdb/builder.go"
+    ],
+    "runtime_reproduction": "本地服务 ConnState 观测三种路径；原实现都不关闭，当前均关闭",
+    "counterevidence": "SDK OwnHTTPClient=false 时不关闭外部传入的客户端，本例实际所有者是 Leo",
+    "root_cause": "influxdb/transport/owned-http-pool",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestBuilderReleasesOwnedHTTPConnections"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F21",
+    "fingerprint": "influxdb/close/duplicate-flush",
+    "module": "components/influxdb",
+    "surface": "重复 Close 向已关闭通道 Flush 导致 panic",
+    "severity": "P2",
+    "trigger_condition": "第二次关闭触发 send on closed channel",
+    "claim": "重复 Close 向已关闭通道 Flush 导致 panic",
+    "current_behavior": "第二次关闭触发 send on closed channel",
+    "expected_behavior": "删除多余 Flush，使用 once 统一资源关闭",
+    "static_evidence": [
+      "components/influxdb/component.go"
+    ],
+    "runtime_reproduction": "原实现 panic 反例明确，修复后重复关闭通过",
+    "counterevidence": "Client.Close 本身已负责 Flush，不降低原有刷出要求",
+    "root_cause": "influxdb/close/duplicate-flush",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestComponentCloseIsIdempotent"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F22",
+    "fingerprint": "nats/error-log/connection-credentials",
+    "module": "components/nats",
+    "surface": "NATS 异步错误日志泄露连接配置",
+    "severity": "P1",
+    "trigger_condition": "打印完整 Conn，合成 Password 值进入日志",
+    "claim": "NATS 异步错误日志泄露连接配置",
+    "current_behavior": "打印完整 Conn，合成 Password 值进入日志",
+    "expected_behavior": "仅记录错误，不格式化连接或订阅对象",
+    "static_evidence": [
+      "components/nats/builder.go"
+    ],
+    "runtime_reproduction": "本地协议服务与合成值验证，原测试失败，当前通过；测试未输出凭据内容",
+    "counterevidence": "保留错误详情，未简单禁用错误日志",
+    "root_cause": "nats/error-log/connection-credentials",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestErrorHandlerDoesNotLogConnectionCredentials"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F23",
+    "fingerprint": "iris/startup/publication-and-owned-listener",
+    "module": "components/iris/web",
+    "surface": "Iris 失败构建泄漏端口，启动超时被报告成功",
+    "severity": "P2",
+    "trigger_condition": "OnBuild 错误后端口不能重绑；Host 配置阻塞超过窗口仍返回成功",
+    "claim": "Iris 失败构建泄漏端口，启动超时被报告成功",
+    "current_behavior": "OnBuild 错误后端口不能重绑；Host 配置阻塞超过窗口仍返回成功",
+    "expected_behavior": "同步 Build 后绑定，等待 Host 注册，超时失败并关闭资源，Close 保证释放 listener",
+    "static_evidence": [
+      "components/iris/web/builder.go",
+      "components/iris/web/component.go"
+    ],
+    "runtime_reproduction": "原行为均由 TCP 端口与 HTTP 测试复现；当前 race/Linux 回归通过",
+    "counterevidence": "历史 QA 已记录窗口只能降低误判概率；现在处理根因，保留配置字段和服务超时",
+    "root_cause": "iris/startup/publication-and-owned-listener",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "TestBuildFailureReleasesListener",
+      "TestHostStartTimeoutIsFailure",
+      "TestServerUsesConfiguredTimeoutsAndCloses",
+      "TestImmediateCloseReleasesListener"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "runtime"
+  },
+  {
+    "platform_or_shared_runtime": "Go 后端库；Darwin arm64 / Linux amd64",
+    "runtime_version_range": "go.mod 最低 1.25；实际 Go1.27.2；os.Root 新用方法核对 Go1.25 API 清单",
+    "device_or_browser": "不适用：本仓库不交付前端 UI",
+    "orientation_and_input": "不适用",
+    "actor_or_role": "使用 Leo 组件的应用/引擎",
+    "classification": "confirmed defect",
+    "confidence": "high",
+    "authority_refs": [
+      "用户要求检查 Leo 并修复确认问题",
+      "AGENTS.md",
+      "对应公开接口/当前 SDK 源码及回归测试"
+    ],
+    "status": "fixed-verified",
+    "reopen_condition": "新反例、契约变更、相关源码或依赖版本变化",
+    "first_seen_revision": "d602fea",
+    "last_checked_revision": "d602fea + 本轮工作区修复（未提交）",
+    "id": "F24",
+    "fingerprint": "docs/index/missing-readme-target",
+    "module": "docs",
+    "surface": "文档快速链接指向不存在的 README",
+    "severity": "P3",
+    "trigger_condition": "构建入口链接无法访问",
+    "claim": "文档快速链接指向不存在的 README",
+    "current_behavior": "构建入口链接无法访问",
+    "expected_behavior": "改为现有 AGENTS.md 并添加本轮 QA 导航",
+    "static_evidence": [
+      "docs/index.md"
+    ],
+    "runtime_reproduction": "静态文件存在性确认",
+    "counterevidence": "历史 QA 报告作为历史事实保留，不改写其当时环境与结论",
+    "root_cause": "docs/index/missing-readme-target",
+    "affected_consumers": "对应组件的 Builder、直接使用方与 Engine 生命周期",
+    "verification_method": [
+      "新建/修改 Markdown 目标存在性检查"
+    ],
+    "validation_cycles": "基线/反例、定向回归、全量 race、Linux 复核；静态项明确标注",
+    "verification_level": "static"
+  }
+]

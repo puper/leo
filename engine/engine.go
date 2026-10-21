@@ -116,6 +116,7 @@ func (me *Engine) Wait() error {
 	go func() {
 		sChan := make(chan os.Signal, 1)
 		signal.Notify(sChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+		defer signal.Stop(sChan)
 		for {
 			sig := <-sChan
 			switch sig {

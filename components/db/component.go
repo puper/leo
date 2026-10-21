@@ -25,14 +25,19 @@ type (
 	}
 )
 
-func New(cfg *config.Config) (*Db, error) {
+func New(cfg *config.Config) (reply *Db, err error) {
 	man := &Db{
 		config:   cfg,
 		wrappers: make(map[string]*Wrapper),
 	}
-	var err error
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, man.Close())
+		}
+	}()
 	for name, config := range cfg.Servers {
 		w := new(Wrapper)
+		man.wrappers[name] = w
 		w.master, err = gorm.Open(mysql.Open(config.Master))
 		if err != nil {
 			return nil, fmt.Errorf("gorm.Open: %w", err)
@@ -46,6 +51,9 @@ func New(cfg *config.Config) (*Db, error) {
 		stdDb.SetMaxOpenConns(config.MaxOpenConns)
 		for _, s := range config.Slave {
 			slave, err := gorm.Open(mysql.Open(s))
+			if slave != nil {
+				w.slave = append(w.slave, slave)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -56,9 +64,7 @@ func New(cfg *config.Config) (*Db, error) {
 			stdDb.SetConnMaxLifetime(time.Duration(config.ConnMaxLifeTime) * time.Second)
 			stdDb.SetMaxIdleConns(config.MaxIdleConns)
 			stdDb.SetMaxOpenConns(config.MaxOpenConns)
-			w.slave = append(w.slave, slave)
 		}
-		man.wrappers[name] = w
 	}
 	return man, nil
 }
@@ -93,17 +99,18 @@ func (me *Db) ReadModel(m Model) *gorm.DB {
 func (me *Db) Close() error {
 	var errs []error
 	for _, w := range me.wrappers {
-		if db, err := w.master.DB(); err == nil {
+		connections := append([]*gorm.DB{w.master}, w.slave...)
+		for _, conn := range connections {
+			if conn == nil {
+				continue
+			}
+			db, err := conn.DB()
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
 			errs = append(errs, db.Close())
 		}
-		for _, s := range w.slave {
-			if db, err := s.DB(); err == nil {
-				errs = append(errs, db.Close())
-			}
-		}
 	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
-	return nil
+	return errors.Join(errs...)
 }

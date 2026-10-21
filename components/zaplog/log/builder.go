@@ -1,6 +1,7 @@
 package log
 
 import (
+	stderrors "errors"
 	"github.com/pkg/errors"
 	"github.com/puper/leo/components/zaplog/log/config"
 	"github.com/puper/leo/engine"
@@ -14,7 +15,7 @@ func Builder(cfg *config.Config, configurers ...func(*Log) error) engine.Builder
 		}
 		for _, configurer := range configurers {
 			if err := configurer(reply); err != nil {
-				return nil, errors.WithMessage(err, "configurer")
+				return nil, stderrors.Join(errors.WithMessage(err, "configurer"), reply.Close())
 			}
 		}
 		return reply, err

@@ -2,8 +2,8 @@ package reconnect
 
 import (
 	"context"
+	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -13,17 +13,19 @@ type Component struct {
 	config       ReconnectConfig
 	backoff      *Backoff
 
-	lifecycleMu sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
-	mu        sync.Mutex
-	cond      *sync.Cond
-	connected bool
-	closing   bool
-	stopped   bool
-	clientSeq int64
+	mu          sync.Mutex
+	cond        *sync.Cond
+	connected   bool
+	closing     bool
+	stopped     bool
+	clientSeq   int64
+	started     bool
+	raw         interface{}
+	cycleCancel context.CancelFunc
 
 	doneCh chan struct{}
 }
@@ -60,15 +62,23 @@ func New(connector Connector, eventHandler EventHandler, config ReconnectConfig)
 		clientSeq:    0,
 		doneCh:       make(chan struct{}),
 	}
+	if cg, ok := connector.(ClientGetter); ok {
+		c.raw = cg.GetClient()
+	}
 	c.cond = sync.NewCond(&c.mu)
 	return c
 }
 
 func (c *Component) Start() error {
 	c.mu.Lock()
-	c.closing = false
-	c.stopped = false
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	if c.closing || c.stopped {
+		return errors.New("reconnect component is closed")
+	}
+	if c.started {
+		return nil
+	}
+	c.started = true
 	c.wg.Add(1)
 	go c.run()
 	return nil
@@ -78,9 +88,22 @@ func (c *Component) Close() error {
 	c.mu.Lock()
 	c.closing = true
 	c.connected = false
-	c.mu.Unlock()
+	started := c.started
 	c.cond.Broadcast()
-	c.cancelContext()
+	c.mu.Unlock()
+	c.cancel()
+	if !started {
+		return nil
+	}
+	if timeout := c.config.GetCloseTimeout(); timeout > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		select {
+		case <-c.doneCh:
+		case <-timer.C:
+			return context.DeadlineExceeded
+		}
+	}
 	c.wg.Wait()
 	return nil
 }
@@ -94,18 +117,7 @@ func (c *Component) IsConnected() bool {
 func (c *Component) GetClient() *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	seq := atomic.LoadInt64(&c.clientSeq)
-	var raw interface{}
-	if cg, ok := c.connector.(ClientGetter); ok {
-		raw = cg.GetClient()
-	}
-
-	return &Client{
-		raw:  raw,
-		seq:  seq,
-		comp: c,
-	}
+	return &Client{raw: c.raw, seq: c.clientSeq, comp: c}
 }
 
 func (c *Component) WaitReconnect() {
@@ -117,13 +129,7 @@ func (c *Component) WaitReconnect() {
 }
 
 func (c *Component) WaitRefresh() {
-	for {
-		seq := atomic.LoadInt64(&c.clientSeq)
-		if seq >= 0 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	c.WaitReconnect()
 }
 
 func (c *Component) run() {
@@ -143,32 +149,47 @@ func (c *Component) run() {
 
 func (c *Component) connectLoop() {
 	attempt := 0
-	for {
-		if !c.waitRetry(attempt) {
-			return
-		}
-		ctx := c.getContext()
+	for c.waitRetry(attempt) {
+		ctx, cancel := context.WithCancel(c.ctx)
+		c.mu.Lock()
+		c.cycleCancel = cancel
+		c.mu.Unlock()
 		err := c.connector.Connect(ctx)
-		if err == nil {
-			c.backoff.Reset()
-			attempt = 0
-			c.setConnected(true)
-			c.eventHandler.OnConnected()
-
-			c.waitForDisconnect(ctx)
-
-			c.setConnected(false)
-
-			if c.getContext().Err() != nil {
-				c.connector.Disconnect()
-				return
-			}
-			c.eventHandler.OnDisconnected(nil)
-			attempt = 1
-		} else {
+		if err != nil {
+			cancel()
 			c.eventHandler.OnError(err)
 			attempt++
+			continue
 		}
+		// Connect/Disconnect/GetClient 由同一循环调用，外部只读取已发布的连接。
+		var raw interface{}
+		if cg, ok := c.connector.(ClientGetter); ok {
+			raw = cg.GetClient()
+		}
+		c.mu.Lock()
+		published := !c.closing && ctx.Err() == nil
+		if published {
+			c.raw = raw
+			c.clientSeq++
+			c.connected = true
+		}
+		c.cond.Broadcast()
+		c.mu.Unlock()
+		if published {
+			c.backoff.Reset()
+			c.eventHandler.OnConnected()
+			c.waitForDisconnect(ctx)
+		}
+		cancel()
+		c.setConnected(false)
+		if err := c.connector.Disconnect(); err != nil {
+			c.eventHandler.OnError(err)
+		}
+		if c.ctx.Err() != nil {
+			return
+		}
+		c.eventHandler.OnDisconnected(nil)
+		attempt = 1
 	}
 }
 
@@ -189,7 +210,7 @@ func (c *Component) healthCheckLoop(ctx context.Context, hc HealthCheckConnector
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), c.config.GetHealthCheckInterval()/2)
+			ctx, cancel := context.WithTimeout(ctx, c.config.GetHealthCheckInterval()/2)
 			err := hc.SendPing(ctx)
 			cancel()
 			if err != nil {
@@ -200,8 +221,7 @@ func (c *Component) healthCheckLoop(ctx context.Context, hc HealthCheckConnector
 }
 
 func (c *Component) waitRetry(attempt int) bool {
-	ctx := c.getContext()
-	if ctx.Err() != nil {
+	if c.ctx.Err() != nil {
 		return false
 	}
 	if attempt <= 0 {
@@ -213,34 +233,28 @@ func (c *Component) waitRetry(attempt int) bool {
 	}
 	delay := c.backoff.NextDelay()
 	c.eventHandler.OnReconnecting(attempt, delay)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 	select {
-	case <-ctx.Done():
-		// ctx 可能因 tryRefresh 被替换；若已替换则继续后续循环。
-		if c.getContext() != ctx {
-			return true
-		}
+	case <-c.ctx.Done():
 		return false
-	case <-time.After(delay):
+	case <-timer.C:
+		return true
 	}
-	return true
 }
 
 func (c *Component) tryRefresh(currentSeq int64) bool {
-	if c.isTerminating() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closing || c.stopped || !c.connected || c.clientSeq != currentSeq {
 		return false
 	}
-	for {
-		seq := atomic.LoadInt64(&c.clientSeq)
-		if seq > currentSeq {
-			return false
-		}
-		if atomic.CompareAndSwapInt64(&c.clientSeq, seq, seq+1) {
-			c.setConnected(false)
-			c.connector.Disconnect()
-			c.resetContext()
-			return true
-		}
-	}
+	c.connected = false
+	c.clientSeq++
+	// 只取消这一代连接，断开与下次连接均交给主循环处理。
+	c.cycleCancel()
+	c.cond.Broadcast()
+	return true
 }
 
 func (c *Component) setConnected(connected bool) {
@@ -250,58 +264,27 @@ func (c *Component) setConnected(connected bool) {
 	c.cond.Broadcast()
 }
 
-func (c *Component) getContext() context.Context {
-	c.lifecycleMu.RLock()
-	defer c.lifecycleMu.RUnlock()
-	return c.ctx
-}
-
-func (c *Component) cancelContext() {
-	c.lifecycleMu.RLock()
-	cancel := c.cancel
-	c.lifecycleMu.RUnlock()
-	cancel()
-}
-
-func (c *Component) resetContext() {
-	if c.isTerminating() {
-		return
-	}
-	c.lifecycleMu.Lock()
-	if c.isTerminating() {
-		c.lifecycleMu.Unlock()
-		return
-	}
-	c.cancel()
-	c.ctx, c.cancel = context.WithCancel(context.Background())
-	c.lifecycleMu.Unlock()
-}
-
-func (c *Component) isTerminating() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.closing || c.stopped
-}
-
 func (c *Client) Raw() interface{} {
+	c.comp.mu.Lock()
+	defer c.comp.mu.Unlock()
 	return c.raw
 }
 
 func (c *Client) Do(fn func(interface{}) error) error {
 	for {
+		c.comp.WaitReconnect()
 		c.comp.mu.Lock()
-		if c.comp.clientSeq != c.seq {
-			c.seq = c.comp.clientSeq
-			if cg, ok := c.comp.connector.(ClientGetter); ok {
-				c.raw = cg.GetClient()
-			}
+		if !c.comp.connected {
+			c.comp.mu.Unlock()
+			return errors.New("reconnect component is not connected")
 		}
-		raw := c.raw
+		if c.comp.clientSeq != c.seq {
+			c.seq, c.raw = c.comp.clientSeq, c.comp.raw
+		}
+		raw, seq := c.raw, c.seq
 		c.comp.mu.Unlock()
-
 		if err := fn(raw); err != nil {
-			if c.comp.tryRefresh(c.seq) {
-				c.comp.WaitReconnect()
+			if c.comp.tryRefresh(seq) {
 				continue
 			}
 			return err

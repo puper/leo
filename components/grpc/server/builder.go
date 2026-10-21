@@ -17,11 +17,13 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
+				me.Server.Stop()
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}
 		lis, err := net.Listen("tcp", cfg.Addr)
 		if err != nil {
+			me.Server.Stop()
 			return nil, errors.WithMessage(err, "net.Listen")
 		}
 		go func() {

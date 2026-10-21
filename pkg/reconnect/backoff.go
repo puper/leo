@@ -1,6 +1,9 @@
 package reconnect
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 type Backoff struct {
 	initialInterval time.Duration
@@ -27,22 +30,15 @@ func (b *Backoff) NextDelay() time.Duration {
 		b.attempt = 1
 		return b.initialInterval
 	}
-	delay := time.Duration(float64(b.initialInterval) * pow(b.multiplier, float64(b.attempt)))
+	// 先限幅再转换，避免超出 time.Duration 范围后出现负延时。
+	delay := float64(b.initialInterval) * math.Pow(b.multiplier, float64(b.attempt))
 	b.attempt++
-	if delay > b.maxInterval {
+	if delay >= float64(b.maxInterval) {
 		return b.maxInterval
 	}
-	return delay
+	return time.Duration(delay)
 }
 
 func (b *Backoff) Attempt() int {
 	return b.attempt
-}
-
-func pow(base, exp float64) float64 {
-	result := 1.0
-	for i := 0; i < int(exp); i++ {
-		result *= base
-	}
-	return result
 }

@@ -70,9 +70,9 @@ type EventHandler interface {
 
 避免多个协程同时刷新连接：
 
-- `clientSeq >= 0`：正常状态
-- 刷新时原子递增 `clientSeq`
-- 通过 CAS 确保只有一个协程执行刷新
+- `clientSeq`：连接代次；连接成功后发布原始客户端快照
+- 刷新失效及新连接发布时递增 `clientSeq`
+- 在同一互斥锁内检查代次并标记刷新，确保每代只触发一次刷新
 - 其他协程通过对比序列号得知已被刷新
 
 ### Client Wrapper
@@ -95,8 +95,8 @@ rdb := client.Raw().(*redis.Client)
 ### tryRefresh 机制
 
 当操作失败时：
-1. `tryRefresh` 通过 CAS 确保只有一个协程执行刷新
-2. 断开连接并重建 context
+1. `tryRefresh` 在同一互斥锁内检查代次并标记刷新，确保每代只触发一次刷新
+2. 取消当前连接的 context，由连接循环断开旧连接后重新连接
 3. `WaitReconnect` 等待重连完成
 4. 其他协程通过序列号对比得知已被刷新
 
@@ -249,3 +249,7 @@ pkg/reconnect/
 - Component 内部使用 mutex + cond 实现线程安全
 - 序列号机制确保多协程不会重复刷新
 - Client.Do() 自动处理并发场景
+
+## 生命周期边界
+
+`Start` 在运行期间重复调用是幂等的，关闭或重试耗尽后不能再次启动同一实例。`Do` 与 `WaitRefresh` 等待可用连接，组件终止会解除等待；`Raw` 返回此 wrapper 上次取得的快照。`Close` 会取消健康检查，并在配置的关闭超时内等待退出；若自定义 Connector 忽略取消、阻塞在关闭操作中，则返回 `context.DeadlineExceeded`。Connector 的连接/断开操作由单一循环调用，但其原始客户端仍须支持调用方的并发使用。

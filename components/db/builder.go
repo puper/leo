@@ -2,6 +2,7 @@ package db
 
 import (
 	"embed"
+	stderrors "errors"
 
 	"github.com/pkg/errors"
 	"github.com/puper/leo/components/db/config"
@@ -17,7 +18,7 @@ func Builder(cfg *config.Config, configurers ...func(*Db) error) engine.Builder 
 		}
 		for _, configurer := range configurers {
 			if err := configurer(reply); err != nil {
-				return nil, errors.WithMessage(err, "configurer")
+				return nil, stderrors.Join(errors.WithMessage(err, "configurer"), reply.Close())
 			}
 		}
 		return reply, nil

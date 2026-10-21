@@ -38,15 +38,20 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		)
 		_, err := c.BucketsAPI().FindBucketByName(context.TODO(), cfg.Bucket)
 		if err != nil {
+			c.Close()
+			httpClient.CloseIdleConnections()
 			return nil, errors.WithMessage(err, "find bucket")
 		}
 		me := &Component{
+			httpClient: httpClient,
 			Client:     c,
 			WriteApi:   c.WriteAPI(cfg.Org, cfg.Bucket),
 			V1QueryApi: NewV1QueryApi(httpClient, c.ServerURL(), cfg.Token, cfg.AppName),
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
+				c.Close()
+				httpClient.CloseIdleConnections()
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}

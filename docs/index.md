@@ -16,9 +16,11 @@
 
 - [Engine 核心机制](../engine/engine.go) - 依赖注入与生命周期
 - [DB 组件示例](../components/db/) - Builder 模式参考
-- [命令行工具](../README.md) - 项目构建命令
+- [构建与验证命令](../AGENTS.md) - 项目入口与约定
 
 ## 关键变更日志
+
+- 2026-10-20: [Leo 全范围审查修复与验证](qa/qa-2026-10-20-leo-audit-fixes.md)，覆盖迁移错误、组件生命周期、并发、消息与租约安全、存储边界及构建兼容性。
 
 - 2026-04-01: 修复 `rabbitmq/subscription` 启动超时与关闭超时耦合问题，补齐初始化通知单次发送与 `deliveries` 关闭退出逻辑，避免阻塞与空转。
 - 2026-04-01: 修复 `pkg/reconnect` 连接状态机，消除重连阶段重复 `Connect`；补齐 `WaitReconnect` 关闭退出条件并收敛 `ctx/cancel` 并发访问。

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	stderrors "errors"
 	"net"
 	"net/http"
@@ -31,32 +32,46 @@ func Builder(cfg *config.Config, configurers ...func(*Web) error) engine.Builder
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}
+		web.app.Configure(iris.WithoutPathCorrection, iris.WithOptimizations)
+		if err := web.app.Build(); err != nil {
+			return nil, errors.WithMessage(err, "app.Build")
+		}
 		lis, err := net.Listen("tcp", cfg.Addr)
 		if err != nil {
 			return nil, errors.WithMessage(err, "net.Listen")
 		}
 
+		web.listener = lis
 		runErrCh := make(chan error, 1)
+		ready := make(chan struct{})
 		go func() {
 			err := web.app.Run(
-				iris.Listener(lis),
-				iris.Server(s),
-				iris.WithoutPathCorrection,
-				iris.WithOptimizations,
+				func(app *iris.Application) error {
+					host := app.NewHost(s)
+					close(ready)
+					return host.Serve(lis)
+				},
 			)
-			if err != nil && !stderrors.Is(err, iris.ErrServerClosed) {
-				runErrCh <- err
-			}
-			close(runErrCh)
-		}()
-		select {
-		case err := <-runErrCh:
 			if err != nil {
-				return nil, errors.WithMessage(err, "app.Run")
+				lis.Close()
+				if !stderrors.Is(err, iris.ErrServerClosed) {
+					runErrCh <- err
+				}
 			}
-		case <-time.After(getStartCheckTimeout(cfg)):
+		}()
+		timer := time.NewTimer(getStartCheckTimeout(cfg))
+		defer timer.Stop()
+		select {
+		case <-ready:
+			return web, nil
+		case err := <-runErrCh:
+			s.Close()
+			return nil, errors.WithMessage(err, "app.Run")
+		case <-timer.C:
+			lis.Close()
+			s.Close()
+			return nil, errors.WithMessage(context.DeadlineExceeded, "app.Run startup")
 		}
-		return web, nil
 	}
 }
 

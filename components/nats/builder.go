@@ -18,7 +18,7 @@ func Builder(cfg *config.Config, configurers ...func(*nats.Conn) error) engine.B
 			nats.MaxReconnects(-1),
 			nats.ReconnectWait(time.Second*3),
 			nats.ErrorHandler(func(c *nats.Conn, sub *nats.Subscription, err error) {
-				log.Println("conn", c, "sub", sub, "error", err)
+				log.Println("nats error:", err)
 			}),
 		)
 		if err != nil {
@@ -26,6 +26,7 @@ func Builder(cfg *config.Config, configurers ...func(*nats.Conn) error) engine.B
 		}
 		for _, configurer := range configurers {
 			if err := configurer(c); err != nil {
+				c.Close()
 				return nil, errors.WithMessage(err, "configurer")
 			}
 		}

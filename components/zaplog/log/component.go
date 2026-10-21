@@ -1,6 +1,8 @@
 package log
 
 import (
+	"errors"
+	"io"
 	"os"
 
 	"github.com/puper/leo/components/zaplog/log/config"
@@ -10,8 +12,9 @@ import (
 )
 
 type Log struct {
-	config *config.Config
-	logs   map[string]*zap.SugaredLogger
+	config  *config.Config
+	logs    map[string]*zap.SugaredLogger
+	writers []io.Closer
 }
 
 func New(cfg *config.Config) (*Log, error) {
@@ -20,7 +23,11 @@ func New(cfg *config.Config) (*Log, error) {
 		logs:   make(map[string]*zap.SugaredLogger),
 	}
 	for logName, logCfg := range cfg.Logs {
-		instance.logs[logName] = NewLog(logCfg)
+		logger, writer := newLog(logCfg)
+		instance.logs[logName] = logger
+		if writer != nil {
+			instance.writers = append(instance.writers, writer)
+		}
 	}
 	if _, ok := instance.logs["default"]; !ok {
 		instance.logs["default"] = NewLog(&config.LogConfig{})
@@ -29,6 +36,11 @@ func New(cfg *config.Config) (*Log, error) {
 }
 
 func NewLog(logCfg *config.LogConfig) *zap.SugaredLogger {
+	logger, _ := newLog(logCfg)
+	return logger
+}
+
+func newLog(logCfg *config.LogConfig) (*zap.SugaredLogger, io.Closer) {
 	levelMap := map[string]zapcore.Level{
 		"debug":  zapcore.DebugLevel,
 		"info":   zapcore.InfoLevel,
@@ -56,17 +68,20 @@ func NewLog(logCfg *config.LogConfig) *zap.SugaredLogger {
 		enc = zapcore.NewConsoleEncoder(cfg.EncoderConfig)
 	}
 	var w zapcore.WriteSyncer
+	var closer io.Closer
 	if logCfg.Output == "" {
 		w = zapcore.AddSync(os.Stdout)
 	} else {
-		w = zapcore.AddSync(&lumberjack.Logger{
+		writer := &lumberjack.Logger{
 			Filename:   logCfg.Output,
 			MaxSize:    logCfg.MaxSize, // megabytes
 			MaxAge:     logCfg.MaxAge,  // days
 			MaxBackups: logCfg.MaxBackups,
 			LocalTime:  true,
 			Compress:   logCfg.Compress,
-		})
+		}
+		closer = writer
+		w = zapcore.AddSync(writer)
 	}
 	log := zap.New(
 		zapcore.NewCore(enc, w, cfg.Level),
@@ -79,7 +94,7 @@ func NewLog(logCfg *config.LogConfig) *zap.SugaredLogger {
 		opts = append(opts, zap.AddStacktrace(zap.ErrorLevel))
 	}
 	log = log.WithOptions(opts...)
-	return log.Sugar().With(logCfg.InitialFields...)
+	return log.Sugar().With(logCfg.InitialFields...), closer
 }
 
 func (me *Log) Get(names ...string) *zap.SugaredLogger {
@@ -95,8 +110,11 @@ func (me *Log) Get(names ...string) *zap.SugaredLogger {
 }
 
 func (me *Log) Close() error {
-	for _, l := range me.logs {
-		l.Sync()
+	// lumberjack 的 Write 不缓冲；zapcore.AddSync 的空 Sync 不会关闭它。
+	// 仅释放本组件拥有的文件 writer，不关闭进程共享的 stdout。
+	var errs []error
+	for _, writer := range me.writers {
+		errs = append(errs, writer.Close())
 	}
-	return nil
+	return errors.Join(errs...)
 }
