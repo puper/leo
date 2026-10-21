@@ -11,7 +11,7 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/uniqid/config"
+	"github.com/puper/leo/v2/components/uniqid/config"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -25,9 +25,10 @@ type Component struct {
 	cancel    context.CancelFunc
 	serverId  int
 	serverIds *ServerIds
-	ch        chan *Event
-	mainCh    chan *Event
-	chs       []chan *Event
+	initCh    chan error
+	initOnce  sync.Once
+
+	subscriptions map[*Subscription]struct{}
 
 	mu         sync.RWMutex
 	started    bool
@@ -40,11 +41,11 @@ type Component struct {
 
 func New(cfg *config.Config) *Component {
 	me := &Component{
-		config: cfg,
-		done:   make(chan struct{}),
-		wg:     new(sync.WaitGroup),
-		ch:     make(chan *Event, 1),
-		mainCh: make(chan *Event, 1),
+		config:        cfg,
+		done:          make(chan struct{}),
+		wg:            new(sync.WaitGroup),
+		initCh:        make(chan error, 1),
+		subscriptions: make(map[*Subscription]struct{}),
 		serverIds: &ServerIds{
 			Data: make(map[int]bool),
 		},
@@ -64,32 +65,31 @@ func (me *Component) Start() error {
 		return errors.New("etcd client is nil")
 	}
 	me.started = true
-	me.wg.Add(2)
-	go me.dispatchEvents()
+	me.wg.Add(1)
 	go me.mainloop()
 	go func() { me.wg.Wait(); close(me.done) }()
 	me.mu.Unlock()
 	timer := time.NewTimer(me.config.InitTimeout)
 	defer timer.Stop()
-	for {
-		select {
-		case evt := <-me.mainCh:
-			if evt.Type == TypeServerIdUpdate {
-				me.mu.RLock()
-				ready := me.leaseValid && !me.closing && time.Now().Before(me.leaseUntil)
-				me.mu.RUnlock()
-				if ready {
-					return nil
-				}
-			}
-			if evt.Type == TypeError {
-				return stderrors.Join(evt.Error, me.Close())
-			}
-		case <-me.ctx.Done():
-			return stderrors.Join(me.ctx.Err(), me.Close())
-		case <-timer.C:
-			return stderrors.Join(errors.New("New: timeout"), me.Close())
+	select {
+	case err := <-me.initCh:
+		if err != nil {
+			return stderrors.Join(err, me.Close())
 		}
+		me.mu.RLock()
+		ready := me.leaseValid && !me.closing && time.Now().Before(me.leaseUntil)
+		me.mu.RUnlock()
+		if ready {
+			return nil
+		}
+		if err := me.ctx.Err(); err != nil {
+			return stderrors.Join(err, me.Close())
+		}
+		return stderrors.Join(errors.New("uniqid: lease became invalid during startup"), me.Close())
+	case <-me.ctx.Done():
+		return stderrors.Join(me.ctx.Err(), me.Close())
+	case <-timer.C:
+		return stderrors.Join(errors.New("New: timeout"), me.Close())
 	}
 }
 
@@ -99,6 +99,9 @@ func (me *Component) Close() error {
 	me.leaseValid = false
 	started := me.started
 	me.cancel()
+	for sub := range me.subscriptions {
+		sub.closeLocked(nil)
+	}
 	me.mu.Unlock()
 	if !started {
 		return nil
@@ -152,35 +155,25 @@ func (me *Component) GetServiceIds() map[int]bool {
 	return ids
 }
 
-func (me *Component) dispatchEvents() {
-	defer me.wg.Done()
-	for {
-		select {
-		case evt := <-me.ch:
-			select {
-			case me.mainCh <- evt:
-			default:
-			}
-			for _, ch := range me.chs {
-				select {
-				case ch <- evt:
-				case <-me.ctx.Done():
-					return
-				}
-			}
-		case <-me.ctx.Done():
-			return
-		}
-	}
+func (me *Component) notifyInit(err error) {
+	me.initOnce.Do(func() { me.initCh <- err })
 }
 
-func (me *Component) notify(evt *Event) bool {
-	select {
-	case me.ch <- evt:
-		return true
-	case <-me.ctx.Done():
+func (me *Component) notify(evt Event) bool {
+	me.mu.Lock()
+	defer me.mu.Unlock()
+	if me.ctx.Err() != nil {
 		return false
 	}
+	for sub := range me.subscriptions {
+		select {
+		case sub.events <- evt:
+		default:
+			// 通知背压必须终止于该订阅，不能阻塞同一循环中的续租与所有权检查。
+			sub.closeLocked(ErrSlowSubscriber)
+		}
+	}
+	return true
 }
 
 func (me *Component) mainloop() {
@@ -190,8 +183,11 @@ func (me *Component) mainloop() {
 		if me.ctx.Err() != nil {
 			return
 		}
-		if err != nil && !me.notify(&Event{Type: TypeError, Error: err}) {
-			return
+		if err != nil {
+			me.notifyInit(err)
+			if !me.notify(Event{Type: TypeError, Error: err}) {
+				return
+			}
 		}
 	}
 }
@@ -294,7 +290,8 @@ func (me *Component) watch() (retErr error) {
 	me.serverId, me.serverIds = serverID, &ServerIds{Data: serverIds}
 	me.leaseUntil, me.leaseValid = leaseUntil, true
 	me.mu.Unlock()
-	if !me.notify(&Event{Type: TypeServerIdUpdate}) || !me.notify(&Event{Type: TypeServerIdsUpdate}) {
+	me.notifyInit(nil)
+	if !me.notify(Event{Type: TypeServerIdUpdate}) || !me.notify(Event{Type: TypeServerIdsUpdate}) {
 		return ctx.Err()
 	}
 	timer := time.NewTimer(time.Until(leaseUntil) / 3)
@@ -354,7 +351,7 @@ func (me *Component) watch() (retErr error) {
 			if ownershipLost {
 				return errors.New("server ID ownership lost")
 			}
-			if !me.notify(&Event{Type: TypeServerIdsUpdate}) {
+			if !me.notify(Event{Type: TypeServerIdsUpdate}) {
 				return ctx.Err()
 			}
 		case <-ctx.Done():

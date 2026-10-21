@@ -4,9 +4,9 @@ import (
 	"server/internal/components"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/puper/leo/components/db"
-	"github.com/puper/leo/components/zaplog/log"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/db"
+	"github.com/puper/leo/v2/components/zaplog/log"
+	"github.com/puper/leo/v2/engine"
 	"go.uber.org/zap"
 )
 

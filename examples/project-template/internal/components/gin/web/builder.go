@@ -3,7 +3,7 @@ package web
 import (
 	"server/internal/components/gin/web/config"
 
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(container Container, cfg *config.Config, configureFuncs ...func(*Component) error) engine.Builder {

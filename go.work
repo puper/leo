@@ -5,4 +5,4 @@ use (
 	./examples/project-template
 )
 
-replace github.com/puper/leo v1.0.1 => .
+replace github.com/puper/leo/v2 v2.0.0 => .

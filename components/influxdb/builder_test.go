@@ -2,7 +2,7 @@ package influxdb
 
 import (
 	"errors"
-	"github.com/puper/leo/components/influxdb/config"
+	"github.com/puper/leo/v2/components/influxdb/config"
 	"net"
 	"net/http"
 	"net/http/httptest"

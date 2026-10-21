@@ -3,7 +3,7 @@
 package log
 
 import (
-	"github.com/puper/leo/components/zaplog/log/config"
+	"github.com/puper/leo/v2/components/zaplog/log/config"
 	"os"
 	"path/filepath"
 	"strconv"

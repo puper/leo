@@ -9,7 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/pkg/errors v0.9.1
-	github.com/puper/leo v1.0.1
+	github.com/puper/leo/v2 v2.0.0
 	github.com/puper/servicecaller v1.0.4
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.21.0

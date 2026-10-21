@@ -3,7 +3,7 @@ package logging
 import (
 	"server/internal/ifaces/logger"
 
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/engine"
 )
 
 type Container interface {

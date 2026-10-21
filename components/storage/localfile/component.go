@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/puper/leo/components/storage"
+	"github.com/puper/leo/v2/components/storage"
 )
 
 func New(config *Config) (*Component, error) {

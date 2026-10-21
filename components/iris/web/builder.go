@@ -9,8 +9,8 @@ import (
 
 	"github.com/kataras/iris/v12"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/iris/web/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/iris/web/config"
+	"github.com/puper/leo/v2/engine"
 )
 
 const defaultStartCheckTimeout = 300 * time.Millisecond

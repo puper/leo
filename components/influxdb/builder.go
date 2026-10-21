@@ -9,8 +9,8 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/influxdb/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/influxdb/config"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.Builder {

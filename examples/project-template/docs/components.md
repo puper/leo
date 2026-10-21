@@ -28,17 +28,17 @@
 
 ## 接入 etcd 分布式 ID
 
-当前骨架没有默认要求 etcd。需要自动分配节点号时，可以将固定 Snowflake Builder 替换为 Leo 的 `uniqid`。本节以 Leo 工作区源码为准；复制为独立项目后，先确认选用的发布版包含租约校验与节点交接修复，不能把工作区的保证直接套用到旧发布版。以下是完整的注册函数示例，调用前由应用加载并校验两份配置：
+当前骨架没有默认要求 etcd。需要自动分配节点号时，可以将固定 Snowflake Builder 替换为 Leo v2 的 `uniqid`。模板依赖 v2.0.0，包含租约校验、节点交接与慢订阅者隔离。以下是完整的注册函数示例，调用前由应用加载并校验两份配置：
 
 ```go
 package componentexample
 
 import (
-	"github.com/puper/leo/components/etcd"
-	etcdconfig "github.com/puper/leo/components/etcd/config"
-	"github.com/puper/leo/components/uniqid"
-	idconfig "github.com/puper/leo/components/uniqid/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/etcd"
+	etcdconfig "github.com/puper/leo/v2/components/etcd/config"
+	"github.com/puper/leo/v2/components/uniqid"
+	idconfig "github.com/puper/leo/v2/components/uniqid/config"
+	"github.com/puper/leo/v2/engine"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -53,6 +53,8 @@ func RegisterID(e *engine.Engine, etcdCfg *etcdconfig.Config, idCfg *idconfig.Co
 接入时替换原有 IdGen 注册，避免同名重复注册被忽略；将 `Container.GenerateID` 的类型断言同步改成 `*uniqid.Component`。设置明确的 endpoints、KeyPrefix、节点范围、LeaseTimeout、InitTimeout、CloseTimeout。只有 Builder 成功后才能发号；失去有效租约后 `Generate()` 会 panic，应用应按该契约终止相关业务，不能绕过校验继续发号。系统时钟须准确，组件不解决跨机器时钟偏差。
 
 依赖声明使关闭顺序为业务 → uniqid → etcd。`WithEtcd` 注入的客户端仍由 etcd 组件拥有，不由 uniqid 重复关闭。
+
+需要观察事件时在 Builder 配置回调中调用 `Subscribe(capacity)`，应用从返回的订阅读取 `Events()`，循环结束后检查 `Err()`。容量满时以 `uniqid.ErrSlowSubscriber` 终止该订阅，不影响发号；v2 不再接受 `WithSubscriptions` 外部 channel。
 
 ## 选择其他 Leo 组件
 

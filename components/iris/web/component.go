@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/kataras/iris/v12"
-	"github.com/puper/leo/components/iris/web/config"
+	"github.com/puper/leo/v2/components/iris/web/config"
 )
 
 type Web struct {
@@ -30,6 +30,12 @@ func (me *Web) Close() error {
 		defer cancel()
 	}
 	shutdownErr := me.app.Shutdown(ctx)
+	if shutdownErr != nil {
+		// Shutdown 超时只停止等待；释放活动连接，让遵守 context 的请求退出。
+		for _, host := range me.app.Hosts {
+			shutdownErr = errors.Join(shutdownErr, host.Server.Close())
+		}
+	}
 	if me.listener == nil {
 		return shutdownErr
 	}

@@ -3,8 +3,8 @@ package client
 import (
 	stderrors "errors"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/grpc/client/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/grpc/client/config"
+	"github.com/puper/leo/v2/engine"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

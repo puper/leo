@@ -29,8 +29,8 @@
 
 ## 网络组件
 
-- gRPC 客户端当前使用明文 transport credentials；服务端 Builder 未配置 TLS。通过配置回调注册服务；不要将它描述为已内置 TLS 的生产入口。服务端正的 `ShutdownTimeout` 会限制优雅关闭等待，超时返回 `context.DeadlineExceeded`。
-- Iris 通过 `GetApp()` 配置路由。`StartCheckTimeout` 默认 300ms，用于等待 Host 注册；启动超时返回错误。HTTP 读、写、空闲超时直接使用配置值。
+- gRPC 客户端当前使用明文 transport credentials；服务端 Builder 未配置 TLS。通过配置回调注册服务；不要将它描述为已内置 TLS 的生产入口。服务端正的 `ShutdownTimeout` 会限制优雅关闭等待，超时返回 `context.DeadlineExceeded`。组件直接拥有 listener，即使 `Serve` 尚未登记它，`Close` 也会同步释放端口。
+- Iris 通过 `GetApp()` 配置路由。`StartCheckTimeout` 默认 300ms，用于等待 Host 注册；启动超时返回错误。HTTP 读、写、空闲超时直接使用配置值。优雅关闭失败后强制关闭所属 HTTP Server 的普通活动连接，保留超时与清理错误；业务 handler 仍须响应 context 取消。
 - NATS 当前设为无限重连、间隔 3s。Builder 返回原生连接，调用方负责调用其 `Close()`。
 - InfluxDB Builder 会查询指定 Bucket，失败则返回错误。配置中的连接超时字段拼写为 `DailTimeout`（JSON `dailTimeout`）。`Query`/`QueryRecords` 检查 HTTP 与语句错误；记录映射保留 JSON 原始数值，可映射到 `int64`。关闭时释放客户端和自有 HTTP 空闲连接。
 - Resty `SetTimeout` 原地修改并保留已有配置。默认限流器为每秒 1 个令牌、突发容量 10。TLS 验证默认开启；由应用持有并在结束使用时调用底层 HTTP 客户端的 `CloseIdleConnections()`。
@@ -41,7 +41,7 @@ RabbitMQ 通过 `MsgCh()` 读取消息。`AutoAck=false` 时，业务成功后�
 
 - 本地文件的 `RootDir` 是可信配置。普通文件操作使用 `os.Root` 限制目录与符号链接访问；默认创建不覆盖已有文件，需要时显式传 `WithForceReplace`、`WithAutoCreateDir`。`FileInfo.Path` 是本地路径，不是传入所有方法的逻辑相对名；删除根目录是现有显式能力，调用方应控制入口。
 - 日志 `Logs` 按名称配置，`Get()` 使用 `default`，未知名称也返回默认日志。`Output` 为空时写标准输出；`Log.Close` 关闭它拥有的文件 writer，不关闭进程共享 stdout。
-- `uniqid` 需要通过 `WithEtcd` 注入客户端，并声明对 etcd 的引擎依赖。未启动、租约失效或关闭后的 `Generate()` 会 panic，不能继续发号。系统时钟准确是前提；节点交接、有效期与关闭详情见 [分布式 ID 文档](../components/uniqid/README.md)。模板默认使用显式节点号的 Snowflake，未默认启用 etcd。
+- `uniqid` 需要通过 `WithEtcd` 注入客户端，并声明对 etcd 的引擎依赖。未启动、租约失效或关闭后的 `Generate()` 会 panic，不能继续发号。v2 使用 `Subscribe(capacity)` 接收事件，队列满以 `ErrSlowSubscriber` 终止该订阅，不阻塞租约维护。系统时钟准确是前提；节点交接、有效期与关闭详情见 [分布式 ID 文档](../components/uniqid/README.md)。模板默认使用显式节点号的 Snowflake，未默认启用 etcd。
 
 ## 独立工具
 

@@ -3,7 +3,7 @@ package migrates
 import (
 	"testing"
 
-	"github.com/puper/leo/components/db"
+	"github.com/puper/leo/v2/components/db"
 )
 
 func TestMigrationDiscovery(t *testing.T) {

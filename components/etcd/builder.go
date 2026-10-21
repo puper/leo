@@ -3,8 +3,8 @@ package etcd
 import (
 	stderrors "errors"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/etcd/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/etcd/config"
+	"github.com/puper/leo/v2/engine"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 

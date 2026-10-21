@@ -4,9 +4,11 @@
 
 ## 两个模块
 
-根模块是 Leo 库，`examples/project-template` 是应用骨架。根 `go.work` 使用本地 Leo，并把模板固定版本的 Leo 依赖图也指向根目录，避免历史发布版依赖影响联合构建。模板的 Gin/JWT/Swagger 依赖保留在自身 `go.mod` 中。
+根模块是 `github.com/puper/leo/v2`，`examples/project-template` 是应用骨架。根 `go.work` 使用本地 Leo，并将模板的 `github.com/puper/leo/v2 v2.0.0` 依赖图指向根目录，使尚未发布的新版本也可联合构建。模板的 Gin/JWT/Swagger 依赖保留在自身 `go.mod` 中。
 
 更新模板的 Leo 版本时，同步调整 `go.work` 中版本限定的 replace，并分别验证工作区和独立模块模式。
+
+v1 调用方迁移步骤、公开接口变化与发布验收见 [v2 迁移说明](v2-migration.md)。既有 v1 标签不移动，v2 不提供旧导入路径的兼容层。
 
 `go test ./...` 不会跨越嵌套 module，必须分别验证：
 

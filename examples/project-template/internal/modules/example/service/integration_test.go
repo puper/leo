@@ -18,8 +18,8 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
-	"github.com/puper/leo/components/db"
-	dbconfig "github.com/puper/leo/components/db/config"
+	"github.com/puper/leo/v2/components/db"
+	dbconfig "github.com/puper/leo/v2/components/db/config"
 	"github.com/spf13/viper"
 )
 

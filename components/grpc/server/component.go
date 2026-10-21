@@ -2,17 +2,31 @@ package server
 
 import (
 	"context"
-	"github.com/puper/leo/components/grpc/server/config"
-	"google.golang.org/grpc"
+	"errors"
+	"net"
 	"time"
+
+	"github.com/puper/leo/v2/components/grpc/server/config"
+	"google.golang.org/grpc"
 )
 
 type Component struct {
 	*grpc.Server
-	config *config.Config
+	config   *config.Config
+	listener net.Listener
 }
 
-func (me *Component) Close() error {
+func (me *Component) Close() (err error) {
+	defer func() {
+		if me.listener == nil {
+			return
+		}
+		// Serve 可能尚未登记监听器，Close 不能依赖它后续获得调度才释放端口。
+		closeErr := me.listener.Close()
+		if !errors.Is(closeErr, net.ErrClosed) {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	if me.Server == nil {
 		return nil
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/puper/leo/components/db/config"
+	"github.com/puper/leo/v2/components/db/config"
 	"gorm.io/gorm"
 )
 

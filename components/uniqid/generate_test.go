@@ -121,8 +121,11 @@ func TestOwnershipLossStopsGeneration(t *testing.T) {
 }
 func TestHistoricalDeleteBeforeClaimDoesNotInvalidateLease(t *testing.T) {
 	c, _, w := testComponent(t)
-	updates := make(chan *Event, 8)
-	c.chs = []chan *Event{updates}
+	sub, err := c.Subscribe(8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := sub.Events()
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}

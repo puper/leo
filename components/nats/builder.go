@@ -6,8 +6,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/nats/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/nats/config"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(cfg *config.Config, configurers ...func(*nats.Conn) error) engine.Builder {

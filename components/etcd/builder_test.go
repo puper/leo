@@ -2,7 +2,7 @@ package etcd
 
 import (
 	"errors"
-	"github.com/puper/leo/components/etcd/config"
+	"github.com/puper/leo/v2/components/etcd/config"
 	"testing"
 	"time"
 )

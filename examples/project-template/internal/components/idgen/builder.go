@@ -2,7 +2,7 @@ package idgen
 
 import (
 	"github.com/bwmarrin/snowflake"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(nodeID int64) engine.Builder {

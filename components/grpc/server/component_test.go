@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/puper/leo/components/grpc/protos"
-	"github.com/puper/leo/components/grpc/server/config"
+	"github.com/puper/leo/v2/components/grpc/protos"
+	"github.com/puper/leo/v2/components/grpc/server/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"net"

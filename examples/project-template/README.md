@@ -8,7 +8,7 @@
 
 从 Leo 根目录进入 `examples/project-template` 后执行本文命令。根 `go.work` 让模板使用当前 Leo 源码和依赖图，因此可以同时调试库和应用；无需修改模板 `go.mod` 为本地路径。库与模板是两个 module，根目录的 `go test ./...` 不包含模板，需单独运行 `make build test lint`。
 
-复制到 Leo 仓库之外后，模板使用自身 `go.mod` 固定的 Leo 发布版，不再继承工作区；`GOWORK=off make build test lint` 可验证这种模式。库的未发布修改不会自动进入新项目，应在发布并验证后更新新项目的 Leo 版本。
+复制到 Leo 仓库之外后，模板使用自身 `go.mod` 固定的 `github.com/puper/leo/v2 v2.0.0`，不再继承工作区；`GOWORK=off make build test lint` 可验证这种模式。库的未发布修改不会自动进入新项目，应在发布并验证后更新新项目的 Leo 版本。
 
 ## 环境与首次运行
 
@@ -87,7 +87,7 @@ curl --fail http://localhost:8888/readiness
 
 ### 在新项目中改接 PostgreSQL 等数据库
 
-当前 `github.com/puper/leo v1.0.1` 的数据库组件内部固定调用 MySQL 驱动。**仅把 `driver = "mysql"` 改为 `"postgres"` 不会支持 PostgreSQL**，模板会拒绝这个配置。
+当前 `github.com/puper/leo/v2 v2.0.0` 的数据库组件内部固定调用 MySQL 驱动。**仅把 `driver = "mysql"` 改为 `"postgres"` 不会支持 PostgreSQL**，模板会拒绝这个配置。
 
 新项目采用 PostgreSQL 时，建议只接入实际选定的驱动，不必为所有数据库建立兼容层：
 
@@ -149,6 +149,6 @@ make docker-run
 5. 生成新的 JWT 密钥，配置节点号；仅在需要数据库时配置对应连接与迁移，按真实登录流程接入认证。
 6. 执行 `go mod tidy`、`make swagger`、`make build`、`make test`、`make lint`。
 
-选择 Leo 发布版本时使用已验证的明确版本号，不把 `@latest` 写成自动构建步骤。本模板的默认依赖保留来源项目固定的版本；本仓库里的工作区构建验证的是当前源码，两者需分别验证。
+选择 Leo 发布版本时使用已验证的明确版本号，不把 `@latest` 写成自动构建步骤。本模板默认依赖 v2.0.0，Leo 的导入路径均包含 `/v2`；本仓库里的工作区构建验证的是当前源码，两者需分别验证。
 
 目录职责见 [架构说明](docs/design/architecture.md)，协作约定见 [AGENTS.md](AGENTS.md)。

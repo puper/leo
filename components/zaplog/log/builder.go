@@ -3,8 +3,8 @@ package log
 import (
 	stderrors "errors"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/zaplog/log/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/zaplog/log/config"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(cfg *config.Config, configurers ...func(*Log) error) engine.Builder {

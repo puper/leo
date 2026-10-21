@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
-	"github.com/puper/leo/components/db/config"
+	"github.com/puper/leo/v2/components/db/config"
 	"os"
 	"testing"
 	"time"

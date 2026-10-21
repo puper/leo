@@ -5,8 +5,8 @@ import (
 	stderrors "errors"
 
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/db/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/db/config"
+	"github.com/puper/leo/v2/engine"
 	"gorm.io/gorm"
 )
 

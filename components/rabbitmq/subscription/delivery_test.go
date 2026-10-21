@@ -3,7 +3,7 @@ package subscription
 import (
 	"errors"
 	"github.com/puper/gcache"
-	"github.com/puper/leo/components/rabbitmq/subscription/config"
+	"github.com/puper/leo/v2/components/rabbitmq/subscription/config"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"testing"
 	"time"

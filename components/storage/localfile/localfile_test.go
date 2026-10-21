@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/puper/leo/components/storage"
+	"github.com/puper/leo/v2/components/storage"
 )
 
 func TestCreateFileMkdirAllErrorReturned(t *testing.T) {

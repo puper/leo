@@ -10,8 +10,8 @@ import (
 
 	webConf "server/internal/components/gin/web/config"
 
-	dbConf "github.com/puper/leo/components/db/config"
-	logConf "github.com/puper/leo/components/zaplog/log/config"
+	dbConf "github.com/puper/leo/v2/components/db/config"
+	logConf "github.com/puper/leo/v2/components/zaplog/log/config"
 	"github.com/spf13/viper"
 )
 

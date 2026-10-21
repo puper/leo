@@ -2,7 +2,7 @@ package uniqid
 
 import (
 	"context"
-	"github.com/puper/leo/components/uniqid/config"
+	"github.com/puper/leo/v2/components/uniqid/config"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -89,42 +89,34 @@ func TestServiceIDsAreSnapshots(t *testing.T) {
 }
 func TestCloseStopsSlowSubscriber(t *testing.T) {
 	c, _, _ := testComponent(t)
-	subscriber := make(chan *Event)
-	c.chs = []chan *Event{subscriber}
+	sub, err := c.Subscribe(2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-subscriber:
-		t.Error("dispatcher remained blocked after Close")
-	case <-time.After(30 * time.Millisecond):
-	}
-	// 排空旧实现遗留的发送，避免失败的回归夹具留下后台任务。
-	deadline := time.NewTimer(50 * time.Millisecond)
-	defer deadline.Stop()
-	for {
-		select {
-		case <-subscriber:
-		case <-deadline.C:
-			return
+	drained := make(chan struct{})
+	go func() {
+		for range sub.Events() {
 		}
+		close(drained)
+	}()
+	select {
+	case <-drained:
+	case <-time.After(time.Second):
+		t.Fatal("component Close left subscription open")
+	}
+	if err := sub.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestClosedWatchReturnsError(t *testing.T) {
 	c, _, w := testComponent(t)
 	close(w.events)
-	go func() {
-		for {
-			select {
-			case <-c.ch:
-			case <-c.ctx.Done():
-				return
-			}
-		}
-	}()
 	done := make(chan error, 1)
 	go func() { done <- c.watch() }()
 	select {

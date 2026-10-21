@@ -4,8 +4,8 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/grpc/server/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/grpc/server/config"
+	"github.com/puper/leo/v2/engine"
 	"google.golang.org/grpc"
 )
 
@@ -26,6 +26,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 			me.Server.Stop()
 			return nil, errors.WithMessage(err, "net.Listen")
 		}
+		me.listener = lis
 		go func() {
 			defer lis.Close()
 			if err := me.Server.Serve(lis); err != nil {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/puper/leo/components/zaplog/log/config"
+	"github.com/puper/leo/v2/components/zaplog/log/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"

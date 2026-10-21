@@ -2,7 +2,7 @@ package client
 
 import (
 	"errors"
-	"github.com/puper/leo/components/grpc/client/config"
+	"github.com/puper/leo/v2/components/grpc/client/config"
 	"google.golang.org/grpc/connectivity"
 	"testing"
 )

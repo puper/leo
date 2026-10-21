@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/puper/leo/components/db/config"
+	"github.com/puper/leo/v2/components/db/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"testing"

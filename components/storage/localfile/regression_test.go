@@ -2,7 +2,7 @@ package localfile
 
 import (
 	"errors"
-	"github.com/puper/leo/components/storage"
+	"github.com/puper/leo/v2/components/storage"
 	"os"
 	"path/filepath"
 	"strings"

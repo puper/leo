@@ -1,6 +1,8 @@
 # Leo 文档
 
-Leo 是 Go 组件库，模块路径为 `github.com/puper/leo`。`engine` 负责按依赖构建组件并关闭资源，`components` 封装常用服务客户端和服务端，`pkg` 提供可独立使用的并发和重连工具。
+Leo 是 Go 组件库，模块路径为 `github.com/puper/leo/v2`。`engine` 负责按依赖构建组件并关闭资源，`components` 封装常用服务客户端和服务端，`pkg` 提供可独立使用的并发和重连工具。
+
+v2.0.0 的导入路径、事件订阅和关闭行为变更见 [v2 迁移说明](v2-migration.md)。
 
 ## 阅读入口
 

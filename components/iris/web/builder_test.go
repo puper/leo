@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/kataras/iris/v12"
 	"github.com/kataras/iris/v12/core/host"
-	"github.com/puper/leo/components/iris/web/config"
+	"github.com/puper/leo/v2/components/iris/web/config"
 	"io"
 	"net"
 	"net/http"

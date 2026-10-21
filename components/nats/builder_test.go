@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"errors"
 	natslib "github.com/nats-io/nats.go"
-	"github.com/puper/leo/components/nats/config"
+	"github.com/puper/leo/v2/components/nats/config"
 	"io"
 	"log"
 	"net"

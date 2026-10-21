@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"os"
 
-	leolog "github.com/puper/leo/components/zaplog/log"
-	logconfig "github.com/puper/leo/components/zaplog/log/config"
-	"github.com/puper/leo/engine"
+	leolog "github.com/puper/leo/v2/components/zaplog/log"
+	logconfig "github.com/puper/leo/v2/components/zaplog/log/config"
+	"github.com/puper/leo/v2/engine"
 	"github.com/spf13/viper"
 )
 

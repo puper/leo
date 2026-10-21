@@ -2,7 +2,7 @@ package restyclient
 
 import (
 	"github.com/pkg/errors"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/engine"
 )
 
 func Builder(cfg *Config) engine.Builder {

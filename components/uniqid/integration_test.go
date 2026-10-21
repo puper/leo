@@ -2,8 +2,9 @@ package uniqid
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/puper/leo/components/uniqid/config"
+	"github.com/puper/leo/v2/components/uniqid/config"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"os"
 	"testing"
@@ -25,6 +26,10 @@ func TestEtcdLeaseAllocationRenewalAndRelease(t *testing.T) {
 	first, second := New(cfg), New(cfg)
 	first.etcdCli = cli
 	second.etcdCli = cli
+	slow, err := first.Subscribe(2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer first.Close()
 	defer second.Close()
 	if err = first.Start(); err != nil {
@@ -40,6 +45,9 @@ func TestEtcdLeaseAllocationRenewalAndRelease(t *testing.T) {
 	initialExpiry := first.leaseUntil
 	first.mu.RUnlock()
 	time.Sleep(time.Until(initialExpiry) + 100*time.Millisecond)
+	if !errors.Is(slow.Err(), ErrSlowSubscriber) {
+		t.Fatalf("node changes did not terminate slow subscriber: %v", slow.Err())
+	}
 	seen := map[int64]bool{}
 	for i := 0; i < 100; i++ {
 		for _, c := range []*Component{first, second} {

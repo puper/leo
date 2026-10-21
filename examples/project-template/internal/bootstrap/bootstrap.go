@@ -20,9 +20,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/db"
-	"github.com/puper/leo/components/zaplog/log"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/db"
+	"github.com/puper/leo/v2/components/zaplog/log"
+	"github.com/puper/leo/v2/engine"
 	"github.com/spf13/viper"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
