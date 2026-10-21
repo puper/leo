@@ -33,6 +33,10 @@ go get github.com/puper/leo/v2@v2.0.0
 - 强制关闭会取消连接关联的请求 context；业务代码必须响应取消。它不保证强行终止忽略 context 的 handler，也不接管已 hijack 的连接。
 - engine 的 Register、Build、Get、Close、Wait 接口及依赖顺序不变。
 
+## 迁移定义校验
+
+`Migrate` 与 `MigrateTo` 在任何数据库副作用之前检查完整迁移列表中的空 ID，包括 `InitSchema` 路径。发现空 ID 返回已有的 `ErrMissingID`，不执行初始化或前序迁移回调，也不写入迁移历史。正常 ID、保留 ID 与重复 ID 的既有规则保持不变。
+
 ## 模板与发布验证
 
 `examples/project-template` 的核心用法延续来源模板，Leo 依赖更新为 `/v2 v2.0.0`。根 `go.work` 只用于联合开发；复制的模板和 Docker 镜像使用发布模块及校验和，不包含本机 replace。

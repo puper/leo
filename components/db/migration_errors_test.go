@@ -88,3 +88,80 @@ func TestMigrationWithoutUpCallback(t *testing.T) {
 		})
 	}
 }
+
+func TestMigrationIDsValidatedBeforeSideEffects(t *testing.T) {
+	for _, useInitSchema := range []bool{false, true} {
+		for _, missing := range []bool{false, true} {
+			name := "migrate"
+			if useInitSchema {
+				name = "init_schema"
+			}
+			if missing {
+				name += "_missing_id"
+			}
+			t.Run(name, func(t *testing.T) {
+				fixture := &migrationConnector{}
+				database := openMigrationFixture(t, fixture)
+				calls, initializations := 0, 0
+				callback := func(*gorm.DB) error { calls++; return nil }
+				secondID := "second"
+				if missing {
+					secondID = ""
+				}
+				migrator := NewMigrate(database, &Options{}, []*Migration{
+					{ID: "first", Migrate: callback},
+					{ID: secondID, Migrate: callback},
+				})
+				if useInitSchema {
+					migrator.InitSchema(func(*gorm.DB) error { initializations++; return nil })
+				}
+				err := migrator.Migrate()
+				if missing {
+					if !errors.Is(err, ErrMissingID) || calls != 0 || initializations != 0 || fixture.inserts != 0 {
+						t.Fatalf("invalid IDs: error=%v migrations=%d initializations=%d inserts=%d", err, calls, initializations, fixture.inserts)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if useInitSchema {
+					if calls != 0 || initializations != 1 || fixture.inserts != 3 {
+						t.Fatalf("valid initial schema: migrations=%d initializations=%d inserts=%d", calls, initializations, fixture.inserts)
+					}
+				} else if calls != 2 || initializations != 0 || fixture.inserts != 2 {
+					t.Fatalf("valid migrations: migrations=%d initializations=%d inserts=%d", calls, initializations, fixture.inserts)
+				}
+			})
+		}
+	}
+}
+
+func TestMigrateToValidatesCompleteDefinitions(t *testing.T) {
+	for _, useInitSchema := range []bool{false, true} {
+		fixture := &migrationConnector{}
+		database := openMigrationFixture(t, fixture)
+		calls := 0
+		callback := func(*gorm.DB) error { calls++; return nil }
+		migrator := NewMigrate(database, &Options{}, []*Migration{
+			{ID: "first", Migrate: callback},
+			{ID: "", Migrate: callback},
+		})
+		if useInitSchema {
+			migrator.InitSchema(callback)
+		}
+		if err := migrator.MigrateTo("first"); !errors.Is(err, ErrMissingID) || calls != 0 || fixture.inserts != 0 {
+			t.Fatalf("InitSchema=%v: error=%v callbacks=%d inserts=%d", useInitSchema, err, calls, fixture.inserts)
+		}
+	}
+}
+
+func TestInitSchemaWithoutMigrations(t *testing.T) {
+	fixture := &migrationConnector{}
+	migrator := NewMigrate(openMigrationFixture(t, fixture), &Options{}, nil)
+	calls := 0
+	migrator.InitSchema(func(*gorm.DB) error { calls++; return nil })
+	if err := migrator.Migrate(); err != nil || calls != 1 || fixture.inserts != 1 {
+		t.Fatalf("initial schema without migrations: error=%v callbacks=%d inserts=%d", err, calls, fixture.inserts)
+	}
+}

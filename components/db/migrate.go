@@ -146,6 +146,11 @@ func (g *Gormigrate) migrate(migrationID string) error {
 		return ErrNoMigrationDefined
 	}
 
+	// InitSchema 不经过 runMigration，必须在任何数据库副作用之前校验完整定义。
+	if err := g.checkMissingID(); err != nil {
+		return err
+	}
+
 	if err := g.checkReservedID(); err != nil {
 		return err
 	}
@@ -201,6 +206,15 @@ func (g *Gormigrate) migrate(migrationID string) error {
 // initSchema function or if the list of migrations is not empty.
 func (g *Gormigrate) hasMigrations() bool {
 	return g.initSchema != nil || len(g.migrations) > 0
+}
+
+func (g *Gormigrate) checkMissingID() error {
+	for _, m := range g.migrations {
+		if m.ID == "" {
+			return ErrMissingID
+		}
+	}
+	return nil
 }
 
 // Check whether any migration is using a reserved ID.
