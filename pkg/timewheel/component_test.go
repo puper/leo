@@ -42,8 +42,9 @@ func TestAddAndDispatch(t *testing.T) {
 func TestDelete(t *testing.T) {
 	tw := New(1000, 1000)
 	defer tw.Close()
-
-	futureTime := time.Now().Unix() + 10
+	received := make(chan *Job, 2)
+	tw.Sub("test", func(job *Job) { received <- job })
+	futureTime := time.Now().Unix() + 2
 	job := &Job{
 		Key:  "test",
 		Id:   "id1",
@@ -52,41 +53,37 @@ func TestDelete(t *testing.T) {
 
 	tw.Add(job)
 	tw.Delete("test", "id1")
-
-	time.Sleep(800 * time.Millisecond)
+	tw.Add(&Job{Key: "test", Id: "sentinel", Time: futureTime})
+	assertOnlySentinel(t, tw, received)
 }
 
 func TestPurge(t *testing.T) {
 	tw := New(1000, 1000)
 	defer tw.Close()
 
-	var callCount int
-	tw.Sub("test", func(job *Job) {
-		callCount++
-	})
-
+	received := make(chan *Job, 6)
+	tw.Sub("test", func(job *Job) { received <- job })
+	futureTime := time.Now().Unix() + 2
 	for i := 0; i < 5; i++ {
 		job := &Job{
 			Key:  "test",
 			Id:   string(rune('a' + i)),
-			Time: time.Now().Unix() + 10,
+			Time: futureTime,
 		}
 		tw.Add(job)
 	}
 
 	tw.Purge()
-
-	time.Sleep(800 * time.Millisecond)
-
-	if callCount != 0 {
-		t.Errorf("Purge should not trigger callbacks, got %d calls", callCount)
-	}
+	tw.Add(&Job{Key: "test", Id: "sentinel", Time: futureTime})
+	assertOnlySentinel(t, tw, received)
 }
 
 func TestConcurrentAddDelete(t *testing.T) {
 	tw := New(1000, 1000)
 	defer tw.Close()
-
+	received := make(chan *Job, 101)
+	tw.Sub("test", func(job *Job) { received <- job })
+	futureTime := time.Now().Unix() + 2
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
@@ -94,30 +91,42 @@ func TestConcurrentAddDelete(t *testing.T) {
 			defer wg.Done()
 			job := &Job{
 				Key:  "test",
-				Id:   string(rune('a' + id%26)),
-				Time: time.Now().Unix() + 5,
+				Id:   string(rune('a' + id)),
+				Time: futureTime,
 			}
 			tw.Add(job)
+			tw.Delete(job.Key, job.Id)
 		}(i)
 	}
 	wg.Wait()
+	tw.Add(&Job{Key: "test", Id: "sentinel", Time: futureTime})
+	assertOnlySentinel(t, tw, received)
+}
 
-	time.Sleep(800 * time.Millisecond)
+// 哨兵与被删除任务同一到期时间，防止在任务尚未到期时就误判删除成功。
+func assertOnlySentinel(t *testing.T, tw *TimeWheel, received chan *Job) {
+	t.Helper()
+	select {
+	case job := <-received:
+		if job.Id != "sentinel" {
+			t.Fatalf("removed job was dispatched: %s", job.Id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sentinel was not dispatched")
+	}
+	tw.Close()
+	select {
+	case job := <-received:
+		t.Fatalf("unexpected job after sentinel: %s", job.Id)
+	default:
+	}
 }
 
 func TestSubscribeUnsubscribe(t *testing.T) {
 	tw := New(1000, 1000)
 	defer tw.Close()
-
-	var callCount int
-	var mu sync.Mutex
-
-	tw.Sub("test", func(job *Job) {
-		mu.Lock()
-		callCount++
-		mu.Unlock()
-	})
-
+	received := make(chan *Job, 2)
+	tw.Sub("test", func(job *Job) { received <- job })
 	futureTime := time.Now().Unix() + 1
 	job := &Job{
 		Key:  "test",
@@ -126,42 +135,29 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 	}
 	tw.Add(job)
 
-	time.Sleep(1200 * time.Millisecond)
-
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("subscribed callback was not dispatched")
+	}
 	tw.Unsub("test")
-
-	mu.Lock()
-	countBefore := callCount
-	mu.Unlock()
-
+	futureTime = time.Now().Unix() + 2
 	job2 := &Job{
 		Key:  "test",
 		Id:   "id2",
-		Time: time.Now().Unix() + 1,
+		Time: futureTime,
 	}
 	tw.Add(job2)
-
-	time.Sleep(1200 * time.Millisecond)
-
-	mu.Lock()
-	countAfter := callCount
-	mu.Unlock()
-
-	if countBefore == 0 {
-		t.Error("at least one callback should have been triggered")
-	}
-	if countAfter != countBefore {
-		t.Error("after unsubscribe, no more callbacks should be triggered")
-	}
+	tw.Sub("sentinel", func(job *Job) { received <- job })
+	tw.Add(&Job{Key: "sentinel", Id: "sentinel", Time: futureTime})
+	assertOnlySentinel(t, tw, received)
 }
 
 func TestClose(t *testing.T) {
 	tw := New(1000, 1000)
-
-	var callCount int
-	tw.Sub("test", func(job *Job) {
-		callCount++
-	})
+	defer tw.Close()
+	received := make(chan struct{}, 10)
+	tw.Sub("test", func(job *Job) { received <- struct{}{} })
 
 	for i := 0; i < 10; i++ {
 		job := &Job{
@@ -172,27 +168,34 @@ func TestClose(t *testing.T) {
 		tw.Add(job)
 	}
 
-	time.Sleep(1500 * time.Millisecond)
-
-	tw.Close()
-
-	if callCount != 10 {
-		t.Errorf("expected 10 callbacks, got %d", callCount)
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for i := 0; i < 10; i++ {
+		select {
+		case <-received:
+		case <-timer.C:
+			t.Fatalf("received %d callbacks, want 10", i)
+		}
 	}
+	tw.Close()
 }
 
 func TestCloseIdempotent(t *testing.T) {
 	tw := New(1000, 1000)
-
-	go func() {
-		tw.Close()
-	}()
-
-	go func() {
-		tw.Close()
-	}()
-
-	time.Sleep(100 * time.Millisecond)
+	done := make(chan struct{}, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			tw.Close()
+			done <- struct{}{}
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent Close did not return")
+		}
+	}
 }
 
 func TestCloseWaitsMainloopAndDispatch(t *testing.T) {
@@ -201,7 +204,7 @@ func TestCloseWaitsMainloopAndDispatch(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		tw.Add(&Job{
 			Key:  "test",
-			Id:   string(rune('a' + i%26)) + string(rune('A'+(i/26)%26)),
+			Id:   string(rune('a'+i%26)) + string(rune('A'+(i/26)%26)),
 			Time: time.Now().Unix(),
 		})
 	}

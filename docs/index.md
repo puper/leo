@@ -1,29 +1,29 @@
-# 文档索引 (Documentation Index)
+# Leo 文档
 
-## 导航地图
+Leo 是 Go 组件库，模块路径为 `github.com/puper/leo`。`engine` 负责按依赖构建组件并关闭资源，`components` 封装常用服务客户端和服务端，`pkg` 提供可独立使用的并发和重连工具。
 
-| 区域 | 路径 | 说明 |
-|------|------|------|
-| **架构设计** | [docs/design/architecture.md](design/architecture.md) | 核心设计与组件关系 |
-| **组件文档** | `components/*/` | 各组件使用指南 |
-| **约定规范** | [docs/conventions/](conventions/) | 代码风格、语言约定 |
-| **工作流程** | [docs/workflows/](workflows/) | 研究/计划/执行/QA 流程 |
-| **缺陷修复记录** | [docs/qa/](qa/) | 已确认问题、修复方案与回归结果 |
-| **决策记录** | [docs/decisions/](decisions/) | 重要技术决策 |
-| **参考资料** | [docs/refs/](refs/) | 外部链接、证据 |
+## 阅读入口
 
-## 快速链接
+| 文档 | 内容 |
+|---|---|
+| [快速上手](getting-started.md) | 最小可运行示例、配置与启动方式 |
+| [架构与生命周期](architecture.md) | 依赖注册、构建失败、组件获取和关闭契约 |
+| [组件指南](components.md) | 组件入口、配置、资源所有权及使用边界 |
+| [开发与验证](development.md) | Go Modules、workspace、测试与集成验证 |
+| [新项目骨架](../examples/project-template/README.md) | 可复制的 Gin 服务、目录组织、业务模块开发和组件集成 |
 
-- [Engine 核心机制](../engine/engine.go) - 依赖注入与生命周期
-- [DB 组件示例](../components/db/) - Builder 模式参考
-- [构建与验证命令](../AGENTS.md) - 项目入口与约定
+## 仓库结构
 
-## 关键变更日志
+```text
+engine/                    组件容器与依赖图
+components/                数据库、网络、日志、存储和分布式 ID 组件
+pkg/                       keyed mutex、重连、定时任务
+examples/project-template/ 独立 Go module 的应用骨架
+docs/                      当前使用与开发文档
+go.mod、go.sum              Leo 库的依赖
+go.work、go.work.sum        库与应用骨架的本地联合开发
+```
 
-- 2026-10-20: [Leo 全范围审查修复与验证](qa/qa-2026-10-20-leo-audit-fixes.md)，覆盖迁移错误、组件生命周期、并发、消息与租约安全、存储边界及构建兼容性。
+依赖通过 Go Modules 获取，不维护 `vendor`。库声明 Go 1.25，联合开发工作区和模板要求 Go 1.25.5 或更高版本。具体依赖版本以 [go.mod](../go.mod) 和 [模板 go.mod](../examples/project-template/go.mod) 为准。
 
-- 2026-04-01: 修复 `rabbitmq/subscription` 启动超时与关闭超时耦合问题，补齐初始化通知单次发送与 `deliveries` 关闭退出逻辑，避免阻塞与空转。
-- 2026-04-01: 修复 `pkg/reconnect` 连接状态机，消除重连阶段重复 `Connect`；补齐 `WaitReconnect` 关闭退出条件并收敛 `ctx/cancel` 并发访问。
-- 2026-04-01: 退役 `pkg/reconnectable` 组件；`iris/web` 的 Builder 启动检查窗口调整为可配置并提高默认等待时长，降低启动误判概率。
-- 2026-04-01: 修复 `mutexmanager` 在写锁释放时误删仍有待读锁条目的问题；重构 `timewheel` 关闭握手，确保 `Close()` 等待 `mainloop` 与 `dispatch` 完整退出。
-- 2026-03-31: 启动一轮稳定性修复，覆盖 `reconnectable` 启动阻塞、`influxdb` 反序列化目标错误、`iris` 启停行为、`engine` 缺失依赖构建器检测、`localfile` 路径归属校验与 `db` 迁移加载健壮性。
+AI 计划与审查记录写入被 Git 忽略的 `.ai/`，对外使用说明维护在本目录；旧审计报告不是当前接口文档。

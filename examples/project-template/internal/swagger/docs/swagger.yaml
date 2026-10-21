@@ -1,0 +1,140 @@
+basePath: /
+definitions:
+  db.Example:
+    properties:
+      id:
+        example: "0"
+        type: string
+      name:
+        type: string
+    type: object
+  dto.CreateArg:
+    properties:
+      name:
+        type: string
+    type: object
+  dto.CreateReply:
+    properties:
+      id:
+        example: "0"
+        type: string
+    type: object
+  dto.GetArg:
+    properties:
+      id:
+        example: "0"
+        type: string
+    type: object
+  dto.GetReply:
+    properties:
+      example:
+        $ref: '#/definitions/db.Example'
+    type: object
+  dto.Resp:
+    properties:
+      code:
+        type: integer
+      data: {}
+      details: {}
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Go + Gin 框架模板，展示标准项目结构和组件使用示例
+  title: Framework Template API
+  version: "1.0"
+paths:
+  /api/example/create:
+    post:
+      consumes:
+      - application/json
+      description: 仅在配置 db、启用 MySQL 示例时注册。
+      parameters:
+      - description: 示例名称（1–100 字符）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateArg'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.Resp'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.CreateReply'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.Resp'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.Resp'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.Resp'
+      security:
+      - Bearer: []
+      summary: 创建示例记录
+      tags:
+      - example
+  /api/example/detail:
+    post:
+      consumes:
+      - application/json
+      description: 仅在配置 db、启用 MySQL 示例时注册。
+      parameters:
+      - description: 示例 ID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GetArg'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.Resp'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GetReply'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.Resp'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.Resp'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.Resp'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.Resp'
+      security:
+      - Bearer: []
+      summary: 查询示例详情
+      tags:
+      - example
+securityDefinitions:
+  Bearer:
+    description: 使用 Bearer {token}，令牌由接入项目认证流程签发。
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

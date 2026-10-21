@@ -84,6 +84,7 @@ func TestLockAndRLock互斥(t *testing.T) {
 
 	m.RUnlock(key)
 	<-done
+	m.Unlock(key)
 }
 
 func TestTryLock(t *testing.T) {
@@ -124,38 +125,28 @@ func TestTryRLock(t *testing.T) {
 func TestMutexManagerLockUnlockRace(t *testing.T) {
 	mm := New()
 	key := "test-key"
-
-	// This test reproduces the race condition where Unlock is called
-	// before Lock completes its actual mutex acquisition
 	var wg sync.WaitGroup
-
-	panicCh := make(chan any, 1)
-
-	// Goroutine that calls Lock
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				panicCh <- r
+	start := make(chan struct{})
+	count := 0
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < 100; j++ {
+				mm.Lock(key)
+				count++
+				mm.Unlock(key)
 			}
 		}()
-		mm.Lock(key)
-		time.Sleep(10 * time.Millisecond) // Simulate work
-		mm.Unlock(key)
-	}()
-
-	// Goroutine that calls Unlock immediately (before Lock completes)
-	// 该路径不应导致测试进程崩溃，panic 由上面的 panicCh 捕获。
-	time.Sleep(1 * time.Millisecond) // Let Lock start but not complete
-	mm.Unlock(key)
-
+	}
+	close(start)
 	wg.Wait()
-
-	select {
-	case r := <-panicCh:
-		t.Logf("goroutine panic captured: %v", r)
-	default:
+	if count != 1600 {
+		t.Fatalf("protected count = %d, want 1600", count)
+	}
+	if len(mm.mutexes) != 0 {
+		t.Fatal("released mutex entries remain")
 	}
 }
 

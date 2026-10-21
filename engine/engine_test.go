@@ -56,10 +56,18 @@ func TestBuildDuplicateTopoOrderingCalls(t *testing.T) {
 		return "instance2", nil
 	}, "test1")
 
-	e.Build()
+	if err := e.Build(); err != nil {
+		t.Fatal(err)
+	}
 
 	if buildCount != 1 {
-		t.Logf("test1 built %d times", buildCount)
+		t.Fatalf("test1 built %d times, want 1", buildCount)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if buildCount != 1 {
+		t.Fatalf("Close rebuilt test1: count = %d", buildCount)
 	}
 }
 
@@ -67,11 +75,10 @@ func TestEngineGetPanicsWhenNotFound(t *testing.T) {
 	e := New(nil)
 
 	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Get() panicked as expected: %v", r)
+		if r := recover(); r == nil {
+			t.Fatal("Get() did not panic for a missing component")
 		}
 	}()
 
 	e.Get("nonexistent")
-	t.Log("BUG or FEATURE: Get() should panic when component not found")
 }

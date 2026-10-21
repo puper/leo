@@ -18,6 +18,7 @@ import (
 type migrationConnector struct {
 	ids              []driver.Value
 	queryErr, rowErr error
+	beginErr         error
 	inserts          int
 }
 
@@ -35,8 +36,13 @@ type migrationConn struct{ c *migrationConnector }
 func (*migrationConn) Prepare(string) (driver.Stmt, error) {
 	return nil, errors.New("unexpected prepare")
 }
-func (*migrationConn) Close() error              { return nil }
-func (*migrationConn) Begin() (driver.Tx, error) { return nil, errors.New("unexpected transaction") }
+func (*migrationConn) Close() error { return nil }
+func (c *migrationConn) Begin() (driver.Tx, error) {
+	if c.c.beginErr != nil {
+		return nil, c.c.beginErr
+	}
+	return nil, errors.New("unexpected transaction")
+}
 func (c *migrationConn) ExecContext(_ context.Context, q string, _ []driver.NamedValue) (driver.Result, error) {
 	if !strings.HasPrefix(q, "INSERT") {
 		return nil, fmt.Errorf("unexpected exec: %s", q)
