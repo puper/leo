@@ -1,9 +1,10 @@
 package etcd
 
 import (
+	stderrors "errors"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/etcd/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/etcd/config"
+	"github.com/puper/leo/v2/engine"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -20,7 +21,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		}
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
-				return nil, errors.WithMessage(err, "etcd.configurer")
+				return nil, stderrors.Join(errors.WithMessage(err, "etcd.configurer"), me.Close())
 			}
 		}
 		return me, nil

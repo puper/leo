@@ -1,6 +1,9 @@
 package reconnect
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 type Connector interface {
 	Connect(ctx context.Context) error
@@ -34,21 +37,21 @@ func AsConnector(conn ConnectFunc, disconnect DisconnectFunc) Connector {
 type funcConnector struct {
 	connect    ConnectFunc
 	disconnect DisconnectFunc
-	connected  bool
+	connected  atomic.Bool
 }
 
 func (c *funcConnector) Connect(ctx context.Context) error {
 	if c.connect == nil {
-		c.connected = true
+		c.connected.Store(true)
 		return nil
 	}
 	err := c.connect(ctx)
-	c.connected = err == nil
+	c.connected.Store(err == nil)
 	return err
 }
 
 func (c *funcConnector) Disconnect() error {
-	c.connected = false
+	c.connected.Store(false)
 	if c.disconnect != nil {
 		return c.disconnect()
 	}
@@ -56,7 +59,7 @@ func (c *funcConnector) Disconnect() error {
 }
 
 func (c *funcConnector) IsConnected() bool {
-	return c.connected
+	return c.connected.Load()
 }
 
 func AsConfigProvider(cfg ReconnectConfig) ConfigProvider {

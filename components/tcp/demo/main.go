@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/puper/leo/pkg/reconnect"
+	"github.com/puper/leo/v2/pkg/reconnect"
 )
 
 type SimpleTCPClient struct {

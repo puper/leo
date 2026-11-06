@@ -1,0 +1,42 @@
+# AI work files
+/.ai/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/server
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+
+# Config (local overrides)
+config/config.toml
+config/.env
+
+# Logs
+*.log
+logs/

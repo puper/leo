@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/puper/leo/components/db/config"
+	"github.com/puper/leo/v2/components/db/config"
 	"gorm.io/gorm"
 )
 
@@ -146,6 +146,11 @@ func (g *Gormigrate) migrate(migrationID string) error {
 		return ErrNoMigrationDefined
 	}
 
+	// InitSchema 不经过 runMigration，必须在任何数据库副作用之前校验完整定义。
+	if err := g.checkMissingID(); err != nil {
+		return err
+	}
+
 	if err := g.checkReservedID(); err != nil {
 		return err
 	}
@@ -154,7 +159,9 @@ func (g *Gormigrate) migrate(migrationID string) error {
 		return err
 	}
 
-	g.begin()
+	if err := g.begin(); err != nil {
+		return err
+	}
 	defer g.rollback()
 
 	if err := g.createMigrationTableIfNotExists(); err != nil {
@@ -201,6 +208,15 @@ func (g *Gormigrate) hasMigrations() bool {
 	return g.initSchema != nil || len(g.migrations) > 0
 }
 
+func (g *Gormigrate) checkMissingID() error {
+	for _, m := range g.migrations {
+		if m.ID == "" {
+			return ErrMissingID
+		}
+	}
+	return nil
+}
+
 // Check whether any migration is using a reserved ID.
 // For now there's only have one reserved ID, but there may be more in the future.
 func (g *Gormigrate) checkReservedID() error {
@@ -238,7 +254,9 @@ func (g *Gormigrate) RollbackLast() error {
 		return ErrNoMigrationDefined
 	}
 
-	g.begin()
+	if err := g.begin(); err != nil {
+		return err
+	}
 	defer g.rollback()
 
 	lastRunMigration, err := g.getLastRunMigration()
@@ -263,7 +281,9 @@ func (g *Gormigrate) RollbackTo(migrationID string) error {
 		return err
 	}
 
-	g.begin()
+	if err := g.begin(); err != nil {
+		return err
+	}
 	defer g.rollback()
 
 	for i := len(g.migrations) - 1; i >= 0; i-- {
@@ -302,7 +322,9 @@ func (g *Gormigrate) getLastRunMigration() (*Migration, error) {
 
 // RollbackMigration undo a migration.
 func (g *Gormigrate) RollbackMigration(m *Migration) error {
-	g.begin()
+	if err := g.begin(); err != nil {
+		return err
+	}
 	defer g.rollback()
 
 	if err := g.rollbackMigration(m); err != nil {
@@ -351,6 +373,9 @@ func (g *Gormigrate) runMigration(migration *Migration) error {
 		return err
 	}
 	if !migrationRan {
+		if migration.Migrate == nil {
+			return fmt.Errorf("gormigrate: migration %q has no migrate function", migration.ID)
+		}
 		if err := migration.Migrate(g.tx); err != nil {
 			return err
 		}
@@ -442,7 +467,7 @@ func (g *Gormigrate) unknownMigrationsHaveHappened() (bool, error) {
 		}
 	}
 
-	return false, nil
+	return false, rows.Err()
 }
 
 func (g *Gormigrate) insertMigration(id string) error {
@@ -450,12 +475,13 @@ func (g *Gormigrate) insertMigration(id string) error {
 	return g.tx.Table(g.options.TableName).Create(record).Error
 }
 
-func (g *Gormigrate) begin() {
+func (g *Gormigrate) begin() error {
 	if g.options.UseTransaction {
 		g.tx = g.db.Begin()
 	} else {
 		g.tx = g.db
 	}
+	return g.tx.Error
 }
 
 func (g *Gormigrate) commit() error {

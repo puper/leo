@@ -28,12 +28,10 @@ type Client struct {
 	ratelimiter resty.RateLimiter
 }
 
+// SetTimeout 与 Resty 的其他 Set 方法一致，更新当前客户端并保留已有配置。
 func (me *Client) SetTimeout(timeout time.Duration) *Client {
-	return &Client{
-		Client:      resty.New().SetTimeout(timeout).SetTransport(me.transport).SetRateLimiter(me.ratelimiter),
-		transport:   me.transport,
-		ratelimiter: me.ratelimiter,
-	}
+	me.Client.SetTimeout(timeout)
+	return me
 }
 func New(cfg *Config) *Client {
 	transport := &http.Transport{

@@ -1,9 +1,10 @@
 package client
 
 import (
+	stderrors "errors"
 	"github.com/pkg/errors"
-	"github.com/puper/leo/components/grpc/client/config"
-	"github.com/puper/leo/engine"
+	"github.com/puper/leo/v2/components/grpc/client/config"
+	"github.com/puper/leo/v2/engine"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -23,7 +24,7 @@ func Builder(cfg *config.Config, configurers ...func(*Component) error) engine.B
 		me.ClientConn = cli
 		for _, configurer := range configurers {
 			if err := configurer(me); err != nil {
-				return nil, errors.WithMessage(err, "configurer")
+				return nil, stderrors.Join(errors.WithMessage(err, "configurer"), me.Close())
 			}
 		}
 		return me, nil

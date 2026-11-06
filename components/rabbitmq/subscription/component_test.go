@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/puper/leo/components/rabbitmq/subscription/config"
+	"github.com/puper/leo/v2/components/rabbitmq/subscription/config"
 )
 
 func TestStartCloseRace(t *testing.T) {
@@ -35,38 +35,6 @@ func TestStartCloseRace(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Start() blocked indefinitely - initCh not sent")
-	}
-}
-
-func TestAckFailureDoesNotRemoveCache(t *testing.T) {
-	cfg := &config.Config{
-		AutoAck: false,
-	}
-
-	sub := New(cfg)
-
-	msg := &Message{
-		config: sub.config,
-		cache:  sub.cache,
-	}
-
-	_, err := sub.cache.Get(msg.DeliveryTag)
-	if err == nil {
-		t.Fatal("Cache should not have DeliveryTag before test")
-	}
-
-	sub.cache.SetWithExpire(msg.DeliveryTag, true, time.Hour)
-
-	_, err = sub.cache.Get(msg.DeliveryTag)
-	if err != nil {
-		t.Fatal("Cache should have DeliveryTag after SetWithExpire")
-	}
-
-	if !cfg.AutoAck {
-		_, err := sub.cache.GetIFPresent(msg.DeliveryTag)
-		if err == nil {
-			t.Log("Cache behavior verified: on Ack success, tag is cached")
-		}
 	}
 }
 

@@ -31,6 +31,11 @@ type Job struct {
 	Data any
 }
 
+type jobKey struct {
+	key string
+	id  string
+}
+
 type request struct {
 	action int
 	job    *Job
@@ -38,8 +43,8 @@ type request struct {
 
 func New(reqLen, dispatchLen int) *TimeWheel {
 	me := &TimeWheel{
-		jobsByTime:   map[int64]map[string]*Job{},
-		jobsById:     map[string]*Job{},
+		jobsByTime:   map[int64]map[jobKey]*Job{},
+		jobsById:     map[jobKey]*Job{},
 		reqs:         make(chan *request, reqLen),
 		dispatchJobs: make(chan *Job, dispatchLen),
 		closed:       make(chan struct{}),
@@ -54,8 +59,8 @@ func New(reqLen, dispatchLen int) *TimeWheel {
 type Callback func(*Job)
 
 type TimeWheel struct {
-	jobsByTime   map[int64]map[string]*Job
-	jobsById     map[string]*Job
+	jobsByTime   map[int64]map[jobKey]*Job
+	jobsById     map[jobKey]*Job
 	reqs         chan *request
 	dispatchJobs chan *Job
 	closed       chan struct{}
@@ -130,24 +135,33 @@ func (me *TimeWheel) mainloop() {
 	}()
 	lastTime := time.Now().Unix()
 	expiredJobTimes := map[int64]struct{}{}
+	var ready []*Job
 LOOP:
 	for {
+		var output chan *Job
+		var next *Job
+		if len(ready) > 0 {
+			output, next = me.dispatchJobs, ready[0]
+		}
 		select {
+		case output <- next:
+			ready[0] = nil
+			ready = ready[1:]
 		case now := <-tk.C:
 			for jobTime := range expiredJobTimes {
 				for _, job := range me.jobsByTime[jobTime] {
-					mapKey := job.Key + ":" + job.Id
+					mapKey := jobKey{job.Key, job.Id}
 					delete(me.jobsById, mapKey)
-					me.dispatchJobs <- job
+					ready = append(ready, job)
 				}
 				delete(me.jobsByTime, jobTime)
 			}
 			expiredJobTimes = map[int64]struct{}{}
 			for jobTime := lastTime + 1; jobTime <= now.Unix(); jobTime++ {
 				for _, job := range me.jobsByTime[jobTime] {
-					mapKey := job.Key + ":" + job.Id
+					mapKey := jobKey{job.Key, job.Id}
 					delete(me.jobsById, mapKey)
-					me.dispatchJobs <- job
+					ready = append(ready, job)
 				}
 				delete(me.jobsByTime, jobTime)
 			}
@@ -156,32 +170,36 @@ LOOP:
 			}
 		case req := <-me.reqs:
 			if req.action == 0 {
-				mapKey := req.job.Key + ":" + req.job.Id
+				mapKey := jobKey{req.job.Key, req.job.Id}
 				if job, ok := me.jobsById[mapKey]; ok {
 					delete(me.jobsByTime[job.Time], mapKey)
 				}
 				me.jobsById[mapKey] = req.job
 				if _, ok := me.jobsByTime[req.job.Time]; !ok {
-					me.jobsByTime[req.job.Time] = map[string]*Job{}
+					me.jobsByTime[req.job.Time] = map[jobKey]*Job{}
 				}
 				me.jobsByTime[req.job.Time][mapKey] = req.job
 				if req.job.Time <= lastTime {
 					expiredJobTimes[req.job.Time] = struct{}{}
 				}
 			} else if req.action == 1 {
-				mapKey := req.job.Key + ":" + req.job.Id
+				mapKey := jobKey{req.job.Key, req.job.Id}
 				if job, ok := me.jobsById[mapKey]; ok {
 					delete(me.jobsById, mapKey)
 					delete(me.jobsByTime[job.Time], mapKey)
 				}
 			} else if req.action == 2 {
-				me.jobsByTime = map[int64]map[string]*Job{}
-				me.jobsById = map[string]*Job{}
+				me.jobsByTime = map[int64]map[jobKey]*Job{}
+				me.jobsById = map[jobKey]*Job{}
 			}
 			req.action = 0
 			req.job = nil
 			requestPool.Put(req)
 		case <-me.closed:
+			// 已到期的任务仍派发；关闭信号使回调中的 Add/Delete 不再阻塞。
+			for _, job := range ready {
+				me.dispatchJobs <- job
+			}
 			break LOOP
 
 		}

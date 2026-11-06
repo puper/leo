@@ -271,7 +271,7 @@ func TestFuncConnector(t *testing.T) {
 }
 
 func TestComponent_HealthCheck(t *testing.T) {
-	conn := &mockHealthConnector{}
+	conn := &mockHealthConnector{pingErr: errors.New("ping failed")}
 	handler := &mockEventHandler{}
 	cfg := &DefaultReconnectConfig{
 		MaxRetries:          1,
@@ -292,7 +292,6 @@ func TestComponent_HealthCheck(t *testing.T) {
 		t.Fatalf("Start() failed: %v", err)
 	}
 
-	conn.pingErr = errors.New("ping failed")
 	time.Sleep(time.Millisecond * 50)
 
 	comp.Close()
@@ -347,15 +346,15 @@ func TestClient_Do_Success(t *testing.T) {
 }
 
 func TestClient_Do_RefreshOnError(t *testing.T) {
-	connectCount := 0
+	var connectCount atomic.Int64
 	conn := &mockConnector{}
 	handler := &mockEventHandler{}
 	cfg := &DefaultReconnectConfig{MaxRetries: -1, InitialInterval: time.Millisecond * 10}
 	comp := New(conn, handler, cfg)
 
 	conn.connectFunc = func(context.Context) error {
-		connectCount++
-		if connectCount < 3 {
+		connectCount.Add(1)
+		if connectCount.Load() < 3 {
 			return errors.New("connection error")
 		}
 		conn.connected = true
@@ -367,7 +366,7 @@ func TestClient_Do_RefreshOnError(t *testing.T) {
 
 	client := comp.GetClient()
 	err := client.Do(func(raw interface{}) error {
-		if connectCount < 2 {
+		if connectCount.Load() < 2 {
 			return errors.New("operation failed")
 		}
 		return nil
@@ -376,7 +375,7 @@ func TestClient_Do_RefreshOnError(t *testing.T) {
 	if err != nil {
 		t.Errorf("Do() failed after retries: %v", err)
 	}
-	if connectCount < 2 {
+	if connectCount.Load() < 2 {
 		t.Error("Should have retried after error")
 	}
 }

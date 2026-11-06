@@ -93,6 +93,8 @@ github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFF
 github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d/go.mod h1:2PavIy+JPciBPrBUjwbNvtwB6RQlve+hkpll6QSNmOE=
 github.com/kataras/blocks v0.0.12 h1:2OnEYFcLtYPjyEMhyDk1pdHm+b75hay5uobuPTacnIc=
 github.com/kataras/blocks v0.0.12/go.mod h1:CtCOQ+YDdd0NJTMW019YPV9D+q6dWO2b9d2cSRgifpk=
+github.com/kataras/golog v0.1.12 h1:Bu7I/G4ilJlbfzjmU39O9N+2uO1pBcMK045fzZ4ytNg=
+github.com/kataras/golog v0.1.12/go.mod h1:wrGSbOiBqbQSQznleVNX4epWM8rl9SJ/rmEacl0yqy4=
 github.com/kataras/golog v0.1.15 h1:gDNOENbbn+6me98UW1f9Cs5MRUlAkabnNvmgLFM58Xw=
 github.com/kataras/golog v0.1.15/go.mod h1:Ozu1TDa+OKC7fFe7OG64In71yLxjda+6kPl+Rg3v1hA=
 github.com/kataras/iris/v12 v12.2.11 h1:sGgo43rMPfzDft8rjVhPs6L3qDJy3TbBrMD/zGL1pzk=

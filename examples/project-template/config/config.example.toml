@@ -1,0 +1,43 @@
+# 复制为 config.toml，填入独立密钥即可无数据库启动。
+[app]
+    env = "dev"
+    timezone = "UTC"
+    # 同一服务的每个进程必须使用不同节点号，范围 0–1023。
+    nodeID = 1
+
+[app.auth]
+    # URL-safe Base64，解码后至少 32 个随机字节；生成命令见 README。
+    jwtSecret = ""
+    jwtExpire = 60
+
+[log.logs.default]
+    output = ""
+    level = "info"
+    traceLevel = "dpanic"
+    format = "json"
+
+[log.logs.access]
+    output = ""
+    level = "info"
+    traceLevel = "dpanic"
+    format = "json"
+
+[web]
+    addr = ":8888"
+    # 空列表不启用跨域；需要时填入准确的前端 origin。
+    corsOrigins = []
+
+# 可选：需要 MySQL 示例时，取消以下整个配置块的注释并填写 master。
+# 不配置 db：不连接数据库、不执行迁移、不注册 /api/example/*。
+# 配置 db 但缺少连接或连接失败：启动报错，不会退回无数据库模式。
+# 此示例组件仅支持 MySQL；PostgreSQL 等接入方式见 README。
+# [db.servers.server]
+#     driver = "mysql"
+#     master = ""
+#     slave = []
+#     connMaxLifeTime = 7200
+#     maxIdleConns = 10
+#     maxOpenConns = 30
+#
+# [db.servers.server.migrate]
+#     tableName = "schema_migrations"

@@ -86,6 +86,9 @@ func (me *V1QueryApi) Query(db string, query string) (*QueryResult, error) {
 	if err != nil {
 		return nil, errors.WithMessage(err, "QueryRaw")
 	}
+	if err := validateQueryResponse(b); err != nil {
+		return nil, err
+	}
 	reply := &QueryResult{}
 	if err := json.Unmarshal(b, reply); err != nil {
 		return nil, errors.WithMessage(err, "json.Unmarshal")
@@ -101,6 +104,9 @@ func (me *V1QueryApi) QueryRecords(db string, query string, reply any) error {
 	b, err := me.QueryRaw(db, query)
 	if err != nil {
 		return errors.WithMessage(err, "QueryRaw")
+	}
+	if err := validateQueryResponse(b); err != nil {
+		return err
 	}
 	records := []map[string]json.RawMessage{}
 	for _, statement := range gjson.GetBytes(b, "results").Array() {
@@ -134,6 +140,64 @@ func (me *V1QueryApi) QueryRecords(db string, query string, reply any) error {
 	}
 	if err := json.Unmarshal(b, reply); err != nil {
 		return errors.WithMessage(err, "json.Unmarshal")
+	}
+	return nil
+}
+
+// HTTP 200 也可能携带语句执行错误，必须先验证响应再映射业务数据。
+func validateQueryResponse(data []byte) error {
+	if !json.Valid(data) {
+		return errors.New("invalid query response JSON")
+	}
+	root := gjson.ParseBytes(data)
+	if message := root.Get("error"); message.Exists() && message.String() != "" {
+		return errors.Errorf("query failed: %s", message.String())
+	}
+	results := root.Get("results")
+	if !results.IsArray() {
+		return errors.New("query response results must be an array")
+	}
+	for _, statement := range results.Array() {
+		if !statement.IsObject() {
+			return errors.New("query statement must be an object")
+		}
+		if message := statement.Get("error"); message.Exists() && message.String() != "" {
+			return errors.Errorf("query statement failed: %s", message.String())
+		}
+		seriesList := statement.Get("series")
+		if !seriesList.Exists() {
+			continue
+		}
+		if !seriesList.IsArray() {
+			return errors.New("query series must be an array")
+		}
+		for _, series := range seriesList.Array() {
+			tags := series.Get("tags")
+			if tags.Exists() && tags.Type != gjson.Null {
+				if !tags.IsObject() {
+					return errors.New("query tags must be an object")
+				}
+				for _, value := range tags.Map() {
+					if value.Type != gjson.String {
+						return errors.New("query tag must be a string")
+					}
+				}
+			}
+			columns, values := series.Get("columns"), series.Get("values")
+			if !columns.IsArray() || !values.IsArray() {
+				return errors.New("query columns and values must be arrays")
+			}
+			for _, column := range columns.Array() {
+				if column.Type != gjson.String {
+					return errors.New("query column must be a string")
+				}
+			}
+			for _, row := range values.Array() {
+				if !row.IsArray() || len(row.Array()) != len(columns.Array()) {
+					return errors.New("query row length does not match columns")
+				}
+			}
+		}
 	}
 	return nil
 }

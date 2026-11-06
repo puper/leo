@@ -1,0 +1,9 @@
+.git
+.ai
+server
+config/config.toml
+config/.env
+*.log
+logs
+coverage*
+vendor
