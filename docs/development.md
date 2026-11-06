@@ -4,7 +4,7 @@
 
 ## 两个模块
 
-根模块是 `github.com/puper/leo/v2`，`examples/project-template` 是应用骨架。根 `go.work` 使用本地 Leo，并将模板的 `github.com/puper/leo/v2 v2.0.0` 依赖图指向根目录，使尚未发布的新版本也可联合构建。模板的 Gin/JWT/Swagger 依赖保留在自身 `go.mod` 中。
+根模块是 `github.com/puper/leo/v2`，`examples/project-template` 是应用骨架。根 `go.work` 使用本地 Leo，并将模板的 `github.com/puper/leo/v2 v2.0.1` 依赖图指向根目录，使尚未发布的新版本也可联合构建。模板的 Gin/JWT/Swagger 依赖保留在自身 `go.mod` 中。
 
 更新模板的 Leo 版本时，同步调整 `go.work` 中版本限定的 replace，并分别验证工作区和独立模块模式。
 
